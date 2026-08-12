@@ -1,15 +1,15 @@
 {
   "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
-  "name": "TeamStrandsDefensive",
+  "name": "TeamStrandsMemory",
   "version": 1,
   "managedBy": "CDK",
   "tags": {
     "agentcore:created-by": "agentcore-cli",
-    "agentcore:project-name": "TeamStrandsDefensive"
+    "agentcore:project-name": "TeamStrandsMemory"
   },
   "runtimes": [
     {
-      "name": "ai_gk_agent",
+      "name": "ai_gk_memory_agent",
       "build": "CodeZip",
       "entrypoint": "src/main.py",
       "codeLocation": "ai-gk/",
@@ -18,7 +18,7 @@
       "protocol": "HTTP"
     },
     {
-      "name": "ai_def_agent",
+      "name": "ai_def_memory_agent",
       "build": "CodeZip",
       "entrypoint": "src/main.py",
       "codeLocation": "ai-def/",
@@ -27,7 +27,7 @@
       "protocol": "HTTP"
     },
     {
-      "name": "ai_mid_agent",
+      "name": "ai_mid_memory_agent",
       "build": "CodeZip",
       "entrypoint": "src/main.py",
       "codeLocation": "ai-mid/",
@@ -36,7 +36,7 @@
       "protocol": "HTTP"
     },
     {
-      "name": "ai_fwd1_agent",
+      "name": "ai_fwd1_memory_agent",
       "build": "CodeZip",
       "entrypoint": "src/main.py",
       "codeLocation": "ai-fwd1/",
@@ -45,7 +45,7 @@
       "protocol": "HTTP"
     },
     {
-      "name": "ai_fwd2_agent",
+      "name": "ai_fwd2_memory_agent",
       "build": "CodeZip",
       "entrypoint": "src/main.py",
       "codeLocation": "ai-fwd2/",
@@ -54,7 +54,12 @@
       "protocol": "HTTP"
     }
   ],
-  "memories": [],
+  "memories": [
+    {
+      "name": "team_memory",
+      "eventExpiryDuration": 7
+    }
+  ],
   "knowledgeBases": [],
   "credentials": [],
   "evaluators": [],
