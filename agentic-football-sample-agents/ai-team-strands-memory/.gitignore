@@ -1,4 +1,11 @@
-# Build artifacts
+# Staged agent directories (generated at deploy time by deploy_all.py)
+_staged/
+
+# Deploy-time injections into agent dirs (removed by deploy_all.py cleanup)
+ai-*/lib/
+ai-*/memory_agent_base.py
+
+# Build artifacts (deploy-all.sh)
 _build/
 __pycache__/
 *.py[cod]
