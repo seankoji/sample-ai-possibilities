@@ -55,7 +55,13 @@ def create_invoke_handler(
             response = agent(state_summary)
             response_text = str(response)
 
-            commands = parse_commands(response_text, team_id, effective_pid)
+            def on_recovered(raw: str) -> None:
+                # The model wrote Python-flavoured JSON (usually `True`/`False`/`None`).
+                # We recovered it rather than dropping the command and falling back —
+                # logged so you can see how often your model does this.
+                log.warn(f"{position_label} recovered malformed JSON from the model: {raw[:200]}")
+
+            commands = parse_commands(response_text, team_id, effective_pid, on_recovered)
 
             if commands:
                 log.info(f"LLM returned {len(commands)} commands: "

@@ -182,6 +182,42 @@ Each agent has three layers of fallback:
 2. **Rule-based fallback** — position-specific logic from `lib/fallback.py`
 3. **Last-resort command** — a single safe command (e.g., SET_STANCE) when everything else fails
 
+### Models that write Python instead of JSON
+
+Models are trained on a lot of Python, so they will occasionally give you Python's spelling
+of a value rather than JSON's:
+
+```json
+[{"commandType": "MOVE_TO", "parameters": {"target_x": 2.0, "sprint": True}}]
+```
+
+`True` is valid Python and invalid JSON. Strictly parsed, that whole command is discarded
+and your agent drops to layer 2 — which looks like nothing is wrong: no crash, no error,
+just an agent that has quietly stopped using its model. The only clue is a
+`LLM parse failed` line in its log.
+
+`lib/json_tolerant.py` handles this. **Only after a strict parse has already failed**, it
+retries on a normalised copy, recovering:
+
+- bare `True` / `False` / `None` → `true` / `false` / `null`
+- a trailing comma before `}` or `]`
+- a markdown code fence wrapping the payload
+
+Valid JSON never reaches that code, so well-formed output behaves exactly as before. Text
+inside strings is never rewritten — `{"note": "True story"}` comes back untouched.
+
+You don't need to do anything to get this; it is already wired into `lib/parsing.py`. If
+you want to see how often your model needs it, pass a callback:
+
+```python
+parse_commands(response_text, team_id, my_player_id, lambda raw: log.warn(f"recovered: {raw[:200]}"))
+```
+
+Run `python3 lib/test_parsing.py` to see the cases it covers.
+
+If your model does this a lot, it is worth tightening your system prompt — recovery is a
+safety net, not a substitute for asking clearly for JSON.
+
 ## Field Coordinates
 
 - x: roughly -55 to +55

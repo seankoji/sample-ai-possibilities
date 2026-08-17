@@ -1,7 +1,8 @@
 """Response parsing utilities for AI soccer agents."""
 
-import json
 import re
+
+from json_tolerant import parse_json_tolerant
 
 VALID_COMMANDS = {
     "MOVE_TO", "PASS", "SHOOT", "SLIDE_TACKLE", "PRESS_BALL", "INTERCEPT", "MARK",
@@ -9,29 +10,41 @@ VALID_COMMANDS = {
 }
 
 
-def parse_commands(text: str, team_id: int, my_player_id: int) -> list[dict]:
-    """Extract commands from LLM response, forcing the given player ID on all commands."""
+def parse_commands(text: str, team_id: int, my_player_id: int, on_recovered=None) -> list[dict]:
+    """Extract commands from LLM response, forcing the given player ID on all commands.
+
+    A model that writes Python-flavoured JSON (``True`` instead of ``true``, a trailing
+    comma, a markdown fence) still has its commands used — see lib/json_tolerant.py for
+    what is recovered and what is deliberately left alone. Pass ``on_recovered(raw)`` if
+    you want to log how often that happens; the commands themselves are used exactly as
+    if the model had emitted valid JSON.
+    """
     match = re.search(r"\[[\s\S]*\]", text)
     if match:
-        try:
-            commands = json.loads(match.group())
-            if isinstance(commands, list):
-                return _tag_commands(commands, team_id, my_player_id)
-        except json.JSONDecodeError:
-            pass
+        commands = _loads(match.group(), on_recovered)
+        if isinstance(commands, list):
+            return _tag_commands(commands, team_id, my_player_id)
 
-    try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return _tag_commands(parsed, team_id, my_player_id)
-        if isinstance(parsed, dict) and "commandType" in parsed:
-            parsed["teamId"] = team_id
-            parsed["playerId"] = my_player_id
-            return [parsed]
-    except json.JSONDecodeError:
-        pass
+    parsed = _loads(text, on_recovered)
+    if isinstance(parsed, list):
+        return _tag_commands(parsed, team_id, my_player_id)
+    if isinstance(parsed, dict) and "commandType" in parsed:
+        parsed["teamId"] = team_id
+        parsed["playerId"] = my_player_id
+        return [parsed]
 
     return []
+
+
+def _loads(candidate: str, on_recovered):
+    """Parse one candidate payload; None when it does not parse even after normalisation."""
+    result = parse_json_tolerant(candidate)
+    if result is None:
+        return None
+    value, recovered = result
+    if recovered and on_recovered is not None:
+        on_recovered(candidate)
+    return value
 
 
 def _clamp(v, lo, hi):
