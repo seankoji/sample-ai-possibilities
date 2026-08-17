@@ -15,7 +15,8 @@ agents/
     ├── ai-mid/         # Midfielder  (player 2) — Nova Pro
     ├── ai-fwd1/        # Forward 1   (player 3) — Nova Micro
     ├── ai-fwd2/        # Forward 2   (player 4) — Nova Lite
-    ├── deploy_all.py   # Build + deploy script
+    ├── deploy-all.sh           # Build + deploy script (macOS/Linux)
+    ├── deploy-all-windows.ps1  # Build + deploy script (Windows)
     └── README.md
 ```
 
@@ -23,9 +24,10 @@ Each agent has the same structure:
 
 ```
 ai-<position>/
-├── src/main.py          # Agent code
-├── pyproject.toml       # Python dependencies
-├── test_local.py        # Local tests (no AWS needed)
+├── src/main.py                          # Agent code
+├── .bedrock_agentcore.yaml.template     # AgentCore config template
+├── requirements.txt                     # Python dependencies
+├── test_local.py                        # Local tests (no AWS needed)
 └── .gitignore
 ```
 
@@ -49,14 +51,16 @@ The shared `lib/` provides:
 ## Prerequisites
 
 - Python 3.10+
-- Node.js 20+ and npm
 - AWS CLI configured with valid credentials
-- AgentCore CLI and CDK: `npm install -g @aws/agentcore aws-cdk`
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) — used by the AgentCore CLI to package Python dependencies
 - AWS account with Bedrock model access (Nova Micro, Lite, and/or Pro)
-- CDK bootstrap (one-time per account/region): `cdk bootstrap aws://<account-id>/<region>`
 
-Works on macOS, Linux, and Windows (PowerShell) — no WSL required.
+**macOS/Linux additionally:**
+- AgentCore CLI: `pip install bedrock-agentcore-starter-toolkit`
+- `rsync` (pre-installed on macOS/Linux)
+
+**Windows additionally:**
+- Node.js 18+ with npm
+- AgentCore CLI: `npm install -g @aws/agentcore aws-cdk`
 
 ## Quick Start
 
@@ -72,24 +76,33 @@ python3 ai-gk/test_local.py --llm
 
 ### 2. Deploy to AWS
 
+**macOS / Linux:**
 ```bash
 # Deploy all 5 agents
-AWS_DEFAULT_REGION=us-east-1 python deploy_all.py
+AWS_DEFAULT_REGION=us-east-1 ./deploy-all.sh
+
+# Deploy a single agent
+AWS_DEFAULT_REGION=us-east-1 ./deploy-all.sh ai-gk
 ```
 
-On Windows (PowerShell):
+**Windows (PowerShell):**
 ```powershell
-$env:AWS_DEFAULT_REGION="us-east-1"
-python deploy_all.py
+# Deploy all 5 agents
+$env:AWS_DEFAULT_REGION = "us-east-1"
+.\deploy-all-windows.ps1
+
+# Deploy a single agent
+.\deploy-all-windows.ps1 -AgentName ai-gk
 ```
 
 The deploy script:
-1. Runs `cdk bootstrap` (idempotent — safe to run every time)
-2. Temporarily copies the shared `lib/` directory into each agent's source directory
-3. Runs `agentcore deploy` once to deploy all agents via CDK
-4. Removes the injected `lib/` copies on success, failure, or Ctrl+C
+1. Creates a `_build/<agent>/` staging directory
+2. Copies the agent's `src/` + shared `lib/` + `requirements.txt`
+3. Generates `.bedrock_agentcore.yaml` from the agent's template (substituting AWS account/region)
+4. Runs `agentcore deploy` from the staging directory
+5. Cleans up `_build/` when done
 
-The shared `lib/` remains a single source of truth — the copies are temporary and never committed.
+This staging approach keeps `lib/` as a single source of truth — you never copy it into each agent's tree.
 
 
 ## Creating Your Own Agent
@@ -119,28 +132,24 @@ fallback_commands = build_fallback(GK_CONFIG)
 agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-micro-v1:0")
 ```
 
-### `agentcore/agentcore.json`
+### `ai-myagent/.bedrock_agentcore.yaml.template`
 
-Add a new runtime entry for your agent:
+Update the `default_agent` and agent name to match your agent:
 
-```json
-{
-  "name": "ai_myagent_agent",
-  "build": "CodeZip",
-  "entrypoint": "src/main.py",
-  "codeLocation": "ai-myagent/",
-  "runtimeVersion": "PYTHON_3_12",
-  "networkMode": "PUBLIC",
-  "protocol": "HTTP"
-}
+```yaml
+default_agent: ai_myagent_agent
+agents:
+  ai_myagent_agent:
+    name: ai_myagent_agent
+    # ... rest stays the same
 ```
 
-### `deploy_all.py`
+### `deploy-all.sh`
 
-Add your agent to the `ALL_AGENTS` list:
+Add your agent to the `ALL_AGENTS` array:
 
-```python
-ALL_AGENTS = ["ai-gk", "ai-def", "ai-mid", "ai-fwd1", "ai-fwd2", "ai-myagent"]
+```bash
+ALL_AGENTS=("ai-gk" "ai-def" "ai-mid" "ai-fwd1" "ai-fwd2" "ai-myagent")
 ```
 
 

@@ -18,17 +18,11 @@ Available MCP tools:
 - `get_defensive_assignment` — Opponent threat ranking for marking priority
 
 Key differences from balanced team:
-- The gateway and its four Lambda tools are declared in
-  `agentcore/agentcore.json` ("tactical-tools") and created by the same
-  `agentcore deploy` that deploys the agents — the CDK app builds the Lambdas
-  from `gateway_tools/` and creates all required IAM roles
-- The CDK stack injects the gateway endpoint into every agent runtime as the
-  `AGENTCORE_GATEWAY_TACTICAL_TOOLS_URL` environment variable
-- `MCPClient` connected to the AgentCore Gateway for tool access
-  (`gateway_agent_base_cdk.py`, staged into each agent at deploy time)
+- `MCPClient` connected to AgentCore Gateway for tool access
 - `gateway_invoke_handler.py` wraps agent calls inside `with mcp_client:` context
 - System prompts guide agents on WHEN to use tools, but agents decide autonomously
 - Gateway uses NONE auth (no token required)
+- Requires `GATEWAY_URL` environment variable (auto-set by deploy-all.sh)
 
 ## Architecture
 
@@ -41,14 +35,11 @@ agents/
     ├── ai-mid/                   # Midfielder  (player 2) — Nova Pro   + Gateway
     ├── ai-fwd1/                  # Forward 1   (player 3) — Nova Micro + Gateway
     ├── ai-fwd2/                  # Forward 2   (player 4) — Nova Lite  + Gateway
-    ├── agentcore/                # AgentCore project config (agents + gateway + tools)
-    │   ├── agentcore.json        # Runtimes + tactical-tools gateway declaration
-    │   └── cdk/                  # CDK app used by `agentcore deploy`
-    ├── gateway_agent_base_cdk.py # Agent factory with MCP client (CDK flow)
-    ├── gateway_invoke_handler.py # Invoke handler with MCP context (both flows)
+    ├── gateway_agent_base.py     # Agent factory with MCP client
+    ├── gateway_invoke_handler.py # Invoke handler with MCP context
     ├── gateway_tools/            # Lambda handlers for tactical tools
-    ├── deploy_all.py             # Cross-platform deploy script
-    ├── destroy_all.py            # Cross-platform teardown script
+    ├── deploy-all.sh             # Build + deploy script (macOS/Linux)
+    ├── deploy-all-windows.ps1    # Build + deploy script (Windows)
     └── README.md
 ```
 
@@ -68,65 +59,71 @@ but the agent autonomously decides whether and when to call them:
 ## Prerequisites
 
 - Python 3.10+
-- Node.js 20+ and npm
 - AWS CLI configured with valid credentials
-- AgentCore CLI and CDK: `npm install -g @aws/agentcore aws-cdk`
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) — used by the AgentCore CLI to package Python dependencies
 - AWS account with Bedrock model access (Nova Micro, Lite, and/or Pro)
-- Permissions for IAM, Lambda, CloudFormation, and Bedrock AgentCore
-- CDK bootstrap (one-time per account/region): `cdk bootstrap aws://<account-id>/<region>`
+- `boto3` installed (`pip install boto3`)
+- Valid AWS credentials with permissions for IAM, Lambda, and Bedrock AgentCore
 
-Works on macOS, Linux, and Windows (PowerShell) — no WSL required.
-No Python packages needed to deploy — `deploy_all.py` uses only the standard library.
+**macOS/Linux additionally:**
+- AgentCore CLI: `pip install bedrock-agentcore-starter-toolkit`
+- `rsync` (pre-installed on macOS/Linux)
+
+**Windows additionally:**
+- Node.js 18+ with npm
+- AgentCore CLI: `npm install -g @aws/agentcore aws-cdk`
 
 ## Deploy
 
-Everything — the four Lambda tools, the MCP gateway, and all five agents — is
-one CloudFormation deployment:
+Everything is handled by a single command. The script automatically:
+1. Creates Lambda IAM role (reuses if exists)
+2. Deploys 4 Lambda functions for tactical tools
+3. Creates Gateway execution role (reuses if exists)
+4. Creates MCP Gateway with NONE auth via boto3 (reuses if exists)
+5. Registers Lambda targets on the gateway
+6. Deploys all 5 agents to AgentCore
 
+**macOS / Linux:**
 ```bash
-# macOS/Linux
-AWS_DEFAULT_REGION=us-east-1 python deploy_all.py
+AWS_DEFAULT_REGION=us-east-1 ./deploy-all.sh
 ```
 
+To deploy a single agent:
+```bash
+AWS_DEFAULT_REGION=us-east-1 ./deploy-all.sh ai-gk
+```
+
+To skip gateway setup (if you already have one):
+```bash
+export GATEWAY_URL=https://your-gateway-id.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp
+./deploy-all.sh
+```
+
+**Windows (PowerShell):**
 ```powershell
-# Windows PowerShell
 $env:AWS_DEFAULT_REGION = "us-east-1"
-python deploy_all.py
+.\deploy-all-windows.ps1
 ```
 
-The script checks prerequisites, writes the deploy target, bootstraps CDK if
-needed, stages the shared `lib/`, `gateway_agent_base_cdk.py`, and
-`gateway_invoke_handler.py` into each agent directory, and runs
-`agentcore deploy --yes`. That single deploy builds and deploys the Lambda
-tools from `gateway_tools/`, creates the `tactical-tools` gateway with its
-targets and IAM roles, and injects `AGENTCORE_GATEWAY_TACTICAL_TOOLS_URL`
-into every agent — nothing to export or configure.
+To deploy a single agent:
+```powershell
+.\deploy-all-windows.ps1 -AgentName ai-gk
+```
+
+To skip gateway setup (if you already have one):
+```powershell
+$env:GATEWAY_URL = "https://your-gateway-id.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
+.\deploy-all-windows.ps1
+```
 
 ## Local Test
 
+Tests verify state summary, command parsing, and fallback logic without
+requiring a deployed Gateway or LLM calls:
+
 ```bash
 python3 ai-gk/test_local.py
-python3 ai-gk/test_local.py --llm  # needs AWS credentials + a deployed gateway
+python3 ai-def/test_local.py
+python3 ai-mid/test_local.py
+python3 ai-fwd1/test_local.py
+python3 ai-fwd2/test_local.py
 ```
-
-## Teardown
-
-```bash
-python destroy_all.py            # remove all 5 agents
-python destroy_all.py ai-gk      # remove one agent
-```
-
-The gateway and Lambda tools are kept; remove the `agentCoreGateways` entry
-from `agentcore/agentcore.json` and redeploy (or delete the CloudFormation
-stack) to delete them.
-
-## Legacy scripts
-
-`deploy-all.sh` / `deploy-all-windows.ps1` (with `manage_gateway.py` and
-`gateway_agent_base.py`) are the previous deployment path and still work.
-Note the two paths manage **separate resources**: the legacy flow creates the
-`afwc-tactical-tools` gateway and `afwc-gateway-tool-*` Lambdas outside
-CloudFormation, while this flow creates `tactical-tools` and its Lambdas
-inside the stack. Running both against one account leaves two gateways and
-two sets of Lambda functions.

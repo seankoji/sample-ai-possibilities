@@ -1,7 +1,4 @@
-# Staged agent directories (generated at deploy time by deploy_all.py)
-_staged/
-
-# Build artifacts (deploy-all.sh)
+# Build artifacts
 _build/
 __pycache__/
 *.py[cod]

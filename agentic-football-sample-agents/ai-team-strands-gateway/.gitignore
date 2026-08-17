@@ -1,12 +1,4 @@
-# Staged agent directories (generated at deploy time by deploy_all.py)
-_staged/
-
-# Deploy-time injections into agent dirs (removed by deploy_all.py cleanup)
-ai-*/lib/
-ai-*/gateway_agent_base.py
-ai-*/gateway_invoke_handler.py
-
-# Build artifacts (deploy-all.sh)
+# Build artifacts
 _build/
 __pycache__/
 *.py[cod]
