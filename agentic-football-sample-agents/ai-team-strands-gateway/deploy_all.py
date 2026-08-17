@@ -113,6 +113,30 @@ def check_tool(name):
         sys.exit(1)
 
 
+def check_agentcore_version(minimum):
+    # The AgentCore CLI checks and syncs this project's pinned CDK dependency
+    # versions (managed dependency versions, since 0.25.0). Older CLIs skip
+    # that entirely and can deploy untested version combinations.
+    out = subprocess.run(
+        [resolve_exe("agentcore"), "--version"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+    version = out.split()[-1] if out else ""
+    try:
+        current = tuple(int(p) for p in version.split("-")[0].split("."))
+        required = tuple(int(p) for p in minimum.split("."))
+    except ValueError:
+        print(f"  agentcore version: {version or 'unknown'} (unparseable, continuing)")
+        return
+    if current < required:
+        print(f"ERROR: agentcore {version} is older than {minimum}.")
+        print("  Update it with: npm install -g @aws/agentcore@latest")
+        sys.exit(1)
+    print(f"  agentcore version: {version}")
+
+
 def aws_cli(*args):
     """Run the AWS CLI and return its stdout, or None on failure."""
     result = subprocess.run(
@@ -133,6 +157,7 @@ print("Checking prerequisites...")
 
 for tool in ["agentcore", "aws", "node", "cdk", "uv"]:
     check_tool(tool)
+check_agentcore_version("0.25.0")
 
 account_id = aws_cli("sts", "get-caller-identity", "--query", "Account", "--output", "text")
 if not account_id:
