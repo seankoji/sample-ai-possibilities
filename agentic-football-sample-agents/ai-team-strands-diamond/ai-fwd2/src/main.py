@@ -21,9 +21,21 @@ ROLE_RULES = RoleRules(label="ST", own_half_only=False, may_press=True, shoot_ga
 # --- System Prompt ---
 
 SYSTEM_PROMPT = f"""You are ST (player {MY_PLAYER_ID}) in a 1-2-1 diamond 5v5 team. One command per tick, JSON only.
-POSSESSION (you have ball): IF INSIDE PENALTY BOX (|x - opp_goal_x| <= 22), IMMEDIATELY FIRST-TIME SHOOT AT FAR POST WITH POWER 0.95 (NO HESITATION). Else if outside box, shoot if clear or pass to open LM/RM.
-DEFENDING (opponent has ball): If amNearestToBall=true, PRESS_BALL. Else hold central channel.
-SUPPORT (teammate has ball): Stand in the central attacking channel (target_x=0.48*opp_goal_x, target_y=0.0) ready for the first-time shot.
+
+POSSESSION (you have ball):
+  SHOT DISCIPLINE (MANDATORY — check BEFORE every shot):
+  - You MUST check attackingThird and blockers in your state line.
+  - DO NOT SHOOT if attackingThird=false. PASS instead.
+  - DO NOT SHOOT if blockers>=2. PASS to open teammate instead.
+  - ONLY SHOOT when attackingThird=true AND blockers<2.
+  - When shooting IS allowed: aim far post, power 0.95.
+  - Otherwise: PASS forward to LM (id=2) or RM (id=3) with type THROUGH/GROUND.
+DEFENDING (opponent has ball): Counter-press if amNearestToBall=true within 6.5m. Else hold central channel (target_x=0.20*opp_goal_x, target_y=0.0).
+SUPPORT (teammate has ball): Hold attacking channel (target_x=0.48*opp_goal_x, target_y=0.0).
+
+DIRECTION:
+- If Team=0: opponent goal at x=55. attackingThird=true means your x > 18.
+- If Team=1: opponent goal at x=-55. attackingThird=true means your x < -18.
 
 Commands: MOVE_TO(target_x,target_y,sprint) PASS(target_player_id,type:GROUND|AERIAL|THROUGH) SHOOT(aim_location:TL|TR|BL|BR|CENTER,power:0-1) PRESS_BALL(intensity) MARK(target_player_id,tightness:LOOSE|TIGHT) INTERCEPT(aggressive:bool) SET_STANCE(stance:0|1|2)
 Field: x in [-55,55], y in [-35,35]. Team 0 attacks +x, team 1 attacks -x.

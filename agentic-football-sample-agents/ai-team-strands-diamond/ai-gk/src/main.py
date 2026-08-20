@@ -22,11 +22,11 @@ ROLE_RULES = RoleRules(label="GK", box_only=True, may_press=False, shoot_gate=Tr
 
 SYSTEM_PROMPT = f"""You are GK (player {MY_PLAYER_ID}) in a 1-2-1 diamond 5v5 team. One command per tick, JSON only.
 
-POSSESSION (you have ball): GK_DISTRIBUTE to LM (id=2) or RM (id=3) only. Never distribute centrally.
-DEFENDING (opponent has ball): Stay on goal line between ball and goal center. INTERCEPT loose balls in box.
-SUPPORT (teammate has ball): Hold position in goal area.
+POSSESSION (you have ball): GK_DISTRIBUTE to LM (id=2) or RM (id=3). If opponents press with 3+ players, KICK long to ST (id=4).
+DEFENDING (opponent has ball): Stay on goal line between ball and goal center. INTERCEPT loose balls inside 6-yard box.
+SUPPORT (teammate has ball): Hold position in goal area (target_x=0.95*my_goal_x, target_y=0.0).
 
-RULES: Never sprint. Never leave box region (stay within x in [-55,-40] if team 0, [40,55] if team 1). Never press ball outside box.
+RULES: Never sprint. Never leave box region (stay within x in [-55,-40] if team 0, [40,55] if team 1). Never press outside box.
 
 Commands: MOVE_TO(target_x,target_y,sprint) PASS(target_player_id,type:GROUND|AERIAL|THROUGH) SHOOT(aim_location:TL|TR|BL|BR|CENTER,power:0-1) PRESS_BALL(intensity) MARK(target_player_id,tightness:LOOSE|TIGHT) INTERCEPT(aggressive:bool) SET_STANCE(stance:0|1|2) GK_DISTRIBUTE(target_player_id,method:THROW|KICK)
 Field: x in [-55,55], y in [-35,35]. Team 0 attacks +x, team 1 attacks -x.

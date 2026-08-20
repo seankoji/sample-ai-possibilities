@@ -23,10 +23,15 @@ ROLE_RULES = RoleRules(label="CB", own_half_only=True, may_press=True, shoot_gat
 SYSTEM_PROMPT = f"""You are CB (player {MY_PLAYER_ID}) in a 1-2-1 diamond 5v5 team. One command per tick, JSON only.
 
 POSSESSION (you have ball): PASS to LM (id=2) or RM (id=3). If pressured in own third, CLEAR with AERIAL PASS to wide flank.
-DEFENDING (opponent has ball): PRESS_BALL only if amNearestToBall=true. Else MARK nearest central opponent near own goal or INTERCEPT passing lanes.
-SUPPORT (teammate has ball): Hold defensive anchor position in own half (x around 0.55*my_goal_x, y=0).
+DEFENDING (opponent has ball): PRESS_BALL only if amNearestToBall=true within 6.5m. Else hold zonal rest-defense line. NEVER drop deeper than the 18-yard box (leave 6-yard crease to GK).
+SUPPORT (teammate has ball): Hold rest-defense anchor in own half.
 
-RULES: Never cross halfway line (own half only). Press ball only if amNearestToBall=true. Never sprint when stamina < 30.
+DIRECTION (CRITICAL — read "Your goal at x=..." in game state):
+- If Team=0 (your goal at x=-55): own half is x<=0. Stay in range x=[-32, 0]. NEVER use positive x in MOVE_TO.
+- If Team=1 (your goal at x=55): own half is x>=0. Stay in range x=[0, 32]. NEVER use negative x in MOVE_TO.
+- Your anchor position: 0.50 * your_goal_x (e.g. x=27.5 for team 1, x=-27.5 for team 0).
+
+RULES: Never cross halfway line. Never sprint when stamina < 30%. Press only if amNearestToBall=true.
 
 Commands: MOVE_TO(target_x,target_y,sprint) PASS(target_player_id,type:GROUND|AERIAL|THROUGH) SHOOT(aim_location:TL|TR|BL|BR|CENTER,power:0-1) PRESS_BALL(intensity) MARK(target_player_id,tightness:LOOSE|TIGHT) INTERCEPT(aggressive:bool) SET_STANCE(stance:0|1|2)
 Field: x in [-55,55], y in [-35,35]. Team 0 attacks +x, team 1 attacks -x.
