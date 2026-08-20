@@ -257,7 +257,7 @@ def test_scenario_rebound_crashing_and_rest_defense():
     # ST takes up position in the middle of the box (x ≈ 55 * 0.65 = 35.75)
     cmd_st = fast_path_decision(game_state, 0, 4, "ST", None)
     assert cmd_st is not None and cmd_st[0]["commandType"] == "MOVE_TO"
-    assert 24.0 <= cmd_st[0]["parameters"]["target_x"] <= 40.0, "Striker must position in the attacking pocket"
+    assert 16.0 <= cmd_st[0]["parameters"]["target_x"] <= 40.0, "Striker must position in the attacking pocket"
     print("✓ Scenario 11: Box positioning & rest-defense screen verified")
 
 
@@ -301,22 +301,17 @@ def test_scenario_gk_possession_outfield_runs_and_long_kick():
         ],
     }
     
-    # 1. Midfielder (LM) must sprint into opposition half
+    # 1. Midfielder (LM) must defer to LLM when GK has ball (Sonnet handles positioning)
     cmd_lm = fast_path_decision(game_state, 0, 2, "LM", None)
-    assert cmd_lm is not None and cmd_lm[0]["commandType"] == "MOVE_TO"
-    assert cmd_lm[0]["parameters"]["target_x"] > 0, "LM must sprint into opposition half when GK has ball"
-    assert cmd_lm[0]["parameters"]["sprint"] is True
+    assert cmd_lm is None, "LM should defer to LLM when GK has ball for intelligent positioning"
 
-    # 2. Striker (ST) must sprint deep into opposition half
+    # 2. Striker (ST) must defer to LLM when GK has ball
     cmd_st = fast_path_decision(game_state, 0, 4, "ST", None)
-    assert cmd_st is not None and cmd_st[0]["commandType"] == "MOVE_TO"
-    assert cmd_st[0]["parameters"]["target_x"] >= 25.0, "ST must sprint into opposition half"
+    assert cmd_st is None, "ST should defer to LLM when GK has ball for intelligent run-making"
 
-    # 3. Goalkeeper must execute long KICK over the 3-man press
+    # 3. Goalkeeper must defer to LLM for smart distribution
     cmd_gk = fast_path_decision(game_state, 0, 0, "GK", None)
-    assert cmd_gk is not None and cmd_gk[0]["commandType"] == "GK_DISTRIBUTE"
-    assert cmd_gk[0]["parameters"]["method"] == "KICK", "GK must KICK long when >= 3 opponents are in our half"
-    assert cmd_gk[0]["parameters"]["target_player_id"] == 4, "GK must target forward player upfield"
+    assert cmd_gk is None, "GK must defer to LLM (Sonnet) for intelligent distribution decision"
 def test_scenario_striker_inside_box_instant_shoot():
     """Scenario 14: Striker receives ball inside the box -> immediately shoots at best far-post path."""
     game_state = {

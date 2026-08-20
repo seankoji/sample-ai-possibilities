@@ -5,7 +5,7 @@ from rules import RoleRules
 
 
 def test_gk_with_ball_distributes():
-    """GK with ball should instantly distribute to nearest outfield player."""
+    """GK with ball should defer to LLM (Sonnet) for intelligent distribution."""
     game_state = {
         "ball": {"position": {"x": -50, "y": 0}, "possessionAgentId": "agentId_0"},
         "players": [
@@ -17,12 +17,8 @@ def test_gk_with_ball_distributes():
     
     result = fast_path_decision(game_state, 0, 0, "GK", None)
     
-    assert result is not None, "GK with ball should trigger fast path"
-    assert len(result) == 1
-    assert result[0]["commandType"] == "GK_DISTRIBUTE"
-    assert result[0]["parameters"]["target_player_id"] == 1  # Nearest is DEF
-    assert result[0]["parameters"]["method"] == "KICK"  # Distance ~32 units, use KICK
-    print("✓ GK instant distribute")
+    assert result is None, "GK with ball should defer to LLM for smart distribution"
+    print("✓ GK defers to LLM for distribution")
 
 
 def test_forward_clear_shot():
@@ -119,16 +115,21 @@ def test_no_fast_path_for_complex_situation():
     game_state = {
         "ball": {"position": {"x": 15, "y": 5}, "possessionAgentId": "agentId_5"},
         "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
             {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 5, "y": 0}, "stamina": 70},
             {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 15, "y": 5}, "stamina": 90},
         ],
     }
     
-    # Opponent has ball but not very close (10 units away)
-    result = fast_path_decision(game_state, 0, 2, "MID", None)
-    
-    assert result is None, "Complex situation should use LLM"
-    print("✓ Complex situation defers to LLM")
+    # 1. GK in open play when opponent holds ball at midfield defers to LLM for sweeping/holding decision
+    gk_rules = RoleRules(label="GK", box_only=True, may_press=False)
+    result_gk = fast_path_decision(game_state, 0, 0, "GK", gk_rules)
+    assert result_gk is None, "Complex open-play goalkeeper decision should use LLM"
+
+    # 2. LM in production correctly handles off-ball defensive covering
+    result_lm = fast_path_decision(game_state, 0, 2, "LM", RoleRules(label="LM", may_press=True, home_y=-8.0))
+    assert result_lm is not None and result_lm[0]["commandType"] == "MOVE_TO"
+    print("✓ Complex situation defers to LLM (GK) and handles production role covering (LM)")
 
 
 def test_teammate_with_ball_shape_support():

@@ -58,7 +58,8 @@ def fast_path_decision(
     possession_id = _possession_idx(ball)
     my_goal_x, opp_goal_x = get_goal_positions(team_id)
     
-    my_stamina = me.get("stamina", 100)
+    stam_raw = me.get("stamina", 100)
+    my_stamina = stam_raw * 100 if stam_raw <= 1.0 else stam_raw
     can_sprint = (my_stamina >= 30)
     press_intensity = 0.85 if can_sprint else 0.45
 
@@ -87,14 +88,39 @@ def fast_path_decision(
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.50, "target_y": 0.0, "sprint": False}, "duration": 0}]
         elif position_label == "LM":
             target_x = my_goal_x * (0.35 if is_protecting_lead else 0.25)
-            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": -8.0, "sprint": False}, "duration": 0}]
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": -6.0, "sprint": False}, "duration": 0}]
         elif position_label == "RM":
             target_x = my_goal_x * (0.35 if is_protecting_lead else 0.25)
-            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": 8.0, "sprint": False}, "duration": 0}]
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": 6.0, "sprint": False}, "duration": 0}]
         elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": 0.0, "target_y": 0.0, "sprint": False}, "duration": 0}]
 
-    # Fast path 1: I have the ball
+    # Fast path 0b: GK out-of-box emergency — if GK is not in box, sprint back immediately
+    # This fixes the kick-off drift bug where GK starts at x≈5.9 as team 1
+    if (position_label == "GK" or my_player_id == 0):
+        gk_in_box = False
+        if team_id == 0:
+            gk_in_box = (my_pos.get("x", 0) <= -40.0)
+        else:
+            gk_in_box = (my_pos.get("x", 0) >= 40.0)
+        
+        if not gk_in_box:
+            # GK is outside its box — override everything and sprint to goal area
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.90, "target_y": 0.0, "sprint": True}, "duration": 0}]
+
+    # Fast path 1: GK has ball → ALL players use LLM for intelligent build-up positioning
+    # When our GK is holding, every player needs to think about where to stand to be a valid target
+    our_gk_has_ball = False
+    if possession_id is not None:
+        ball_holder = next((p for p in my_team if _player_idx(p) == possession_id), None)
+        if ball_holder and _player_idx(ball_holder) == 0:
+            our_gk_has_ball = True
+    
+    if our_gk_has_ball and my_player_id != 0:
+        # Our GK has the ball — defer to LLM for smart off-ball movement
+        return None
+
+    # Fast path 1b: I have the ball
     if possession_id == my_player_id:
         return _fast_path_with_ball(
             my_player_id, team_id, position_label, me, my_team,
@@ -102,13 +128,14 @@ def fast_path_decision(
         )
     
     # Fast path 2: Free Ball — ONLY the nearest outfield teammate chases. Others get into receiving pockets!
-    is_in_opp_box = (abs(my_pos.get("x", 0) - opp_goal_x) <= 22.0) and (abs(my_pos.get("y", 0)) <= 16.0)
+    is_in_opp_box = (abs(my_pos.get("x", 0) - opp_goal_x) <= 22.0) and (abs(my_pos.get("y", 0)) <= 8.0)
+    dist_to_opp_goal = dist(my_pos, {"x": opp_goal_x, "y": 0.0})
     if possession_id is None:
         dist_to_ball = dist(my_pos, ball_pos)
         i_am_nearest = is_nearest_to_ball(my_pos, my_player_id, my_team, ball_pos)
         
-        # Striker loose ball inside box → first-time instant strike!
-        if (position_label in ("ST", "FWD", "FWD1", "FWD2") or my_player_id == 4) and is_in_opp_box and dist_to_ball < 6.0:
+        # Striker loose ball inside box with direct scoring angle AND immediate touch (< 1.2m) -> instant strike!
+        if (position_label in ("ST", "FWD", "FWD1", "FWD2") or my_player_id == 4) and is_in_opp_box and dist_to_ball < 1.2 and dist_to_opp_goal >= 3.0 and abs(my_pos.get("y", 0)) <= 5.0:
             opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
             aim = "TR" if (opp_gk and opp_gk.get("position", {}).get("y", 0) < 0) else "TL"
             return [{
@@ -132,12 +159,12 @@ def fast_path_decision(
             if position_label in ("CB", "DEF"):
                 return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": cb_anchor_x, "target_y": cb_shift_y, "sprint": False}, "duration": 0}]
             elif position_label == "LM":
-                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.45, "target_y": -8.0, "sprint": False}, "duration": 0}]
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.35, "target_y": -6.0, "sprint": False}, "duration": 0}]
             elif position_label == "RM":
-                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.45, "target_y": 8.0, "sprint": False}, "duration": 0}]
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.35, "target_y": 6.0, "sprint": False}, "duration": 0}]
             elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
-                target_y = 0.0 if position_label in ("ST", "FWD") else (-4.0 if position_label == "FWD1" else 4.0)
-                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.48, "target_y": target_y, "sprint": can_sprint}, "duration": 0}]
+                target_y = 0.0 if position_label in ("ST", "FWD") else (-3.0 if position_label == "FWD1" else 3.0)
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.38, "target_y": target_y, "sprint": can_sprint}, "duration": 0}]
 
     # Fast path 2b: Turnover Gegenpressing (3-second immediate counter-press on turnover)
     if adaptive and adaptive.gegenpress_active and my_player_id != 0:
@@ -166,7 +193,7 @@ def fast_path_decision(
                 "parameters": {
                     "target_x": opp_goal_x * 0.50,
                     "target_y": -6.0 if position_label == "LM" else 6.0,
-                    "sprint": can_sprint
+                    "sprint": False
                 },
                 "duration": 0
             }]
@@ -177,7 +204,7 @@ def fast_path_decision(
                 "teamId": team_id,
                 "parameters": {
                     "target_x": my_goal_x * 0.20,
-                    "target_y": -8.0 if position_label == "LM" else 8.0,
+                    "target_y": -6.0 if position_label == "LM" else 6.0,
                     "sprint": False
                 },
                 "duration": 0
@@ -208,7 +235,7 @@ def fast_path_decision(
                 "duration": 0
             }]
         elif position_label in ("LM", "RM"):
-            flank_support_y = -8.0 if position_label == "LM" else 8.0
+            flank_support_y = -6.0 if position_label == "LM" else 6.0
             if gk_has_ball:
                 # When goalie gets ball, all mid players sprint into opposition half!
                 return [{
@@ -216,7 +243,7 @@ def fast_path_decision(
                     "playerId": my_player_id,
                     "teamId": team_id,
                     "parameters": {
-                        "target_x": opp_goal_x * 0.35,
+                        "target_x": opp_goal_x * 0.30,
                         "target_y": flank_support_y,
                         "sprint": can_sprint
                     },
@@ -237,8 +264,8 @@ def fast_path_decision(
                     "duration": 0
                 }]
             else:
-                # Stand in central attacking channel (10% shorter and narrower)
-                target_x = opp_goal_x * 0.45
+                # Stand in attacking channel (compact, away from walls)
+                target_x = opp_goal_x * 0.35
                 return [{
                     "commandType": "MOVE_TO",
                     "playerId": my_player_id,
@@ -253,21 +280,21 @@ def fast_path_decision(
         elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
             if gk_has_ball:
                 # Striker sprints into opposition half for long GK delivery!
-                target_y = 0.0 if position_label in ("ST", "FWD") else (-4.0 if position_label == "FWD1" else 4.0)
+                target_y = 0.0 if position_label in ("ST", "FWD") else (-3.0 if position_label == "FWD1" else 3.0)
                 return [{
                     "commandType": "MOVE_TO",
                     "playerId": my_player_id,
                     "teamId": team_id,
                     "parameters": {
-                        "target_x": opp_goal_x * 0.50,
+                        "target_x": opp_goal_x * 0.38,
                         "target_y": target_y,
                         "sprint": can_sprint
                     },
                     "duration": 0
                 }]
-            # Central attacking pocket (10% shorter: x = 26.4m, y = 0.0)
-            target_x = opp_goal_x * 0.48
-            target_y = 0.0 if position_label in ("ST", "FWD") else (-4.0 if position_label == "FWD1" else 4.0)
+            # Central attacking pocket (compact, away from walls)
+            target_x = opp_goal_x * 0.35
+            target_y = 0.0 if position_label in ("ST", "FWD") else (-3.0 if position_label == "FWD1" else 3.0)
             return [{
                 "commandType": "MOVE_TO",
                 "playerId": my_player_id,
@@ -343,7 +370,7 @@ def fast_path_decision(
     # Fast path 7: Off-ball defensive covering when opponent has ball (prevents fallback PRESS spam)
     if possession_id is not None and not we_have_ball:
         if position_label in ("LM", "RM"):
-            flank_y = -8.0 if position_label == "LM" else 8.0
+            flank_y = -6.0 if position_label == "LM" else 6.0
             def_x = ball_pos.get("x", 0) * 0.35 if ((ball_pos.get("x", 0) < 0) if team_id == 0 else (ball_pos.get("x", 0) > 0)) else 0.0
             return [{
                 "commandType": "MOVE_TO",
@@ -387,45 +414,9 @@ def _fast_path_with_ball(
 ) -> list[dict]:
     """Fast decisions when I have the ball."""
     
-    # GK with ball → long kick if >= 3 opponents in our half, else open distribution
+    # GK with ball → defer to LLM for intelligent distribution decision
     if my_player_id == 0:
-        outfield = [p for p in my_team if _player_idx(p) != 0]
-        if outfield:
-            opps_in_our_half = sum(
-                1 for p in opponents
-                if (p.get("position", {}).get("x", 0) < 0 if team_id == 0 else p.get("position", {}).get("x", 0) > 0)
-            )
-            if opps_in_our_half >= 3 or (adaptive and adaptive.direct_counter_mode):
-                # 3+ opponents pressing in our half or direct counter mode -> play long over the press
-                forward_targets = [
-                    p for p in outfield
-                    if (p.get("position", {}).get("x", 0) > 0 if team_id == 0 else p.get("position", {}).get("x", 0) < 0)
-                ]
-                if not forward_targets:
-                    forward_targets = outfield
-                target = max(forward_targets, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
-                return [{
-                    "commandType": "GK_DISTRIBUTE",
-                    "playerId": my_player_id,
-                    "teamId": team_id,
-                    "parameters": {
-                        "target_player_id": _player_idx(target),
-                        "method": "KICK"
-                    },
-                    "duration": 0
-                }]
-            else:
-                nearest = min(outfield, key=lambda p: dist(p.get("position", {}), my_pos))
-                return [{
-                    "commandType": "GK_DISTRIBUTE",
-                    "playerId": my_player_id,
-                    "teamId": team_id,
-                    "parameters": {
-                        "target_player_id": _player_idx(nearest),
-                        "method": "THROW" if dist(nearest.get("position", {}), my_pos) < 25 else "KICK"
-                    },
-                    "duration": 0
-                }]
+        return None  # Use Sonnet for GK distribution — complex decision
 
     # 0. OPEN GOAL / CLEAR BOX FINISHING (Universal for ALL outfield players: ST, LM, RM, MID, CB):
     # If ANY outfield player is in shooting range (<28m) with a clear shot (blockers <= 1) or inside box (<=22m, blockers <= 2):
@@ -716,16 +707,16 @@ def _fast_path_with_ball(
             "commandType": "MOVE_TO",
             "playerId": my_player_id,
             "teamId": team_id,
-            "parameters": {"target_x": opp_goal_x * 0.65, "target_y": 0.0, "sprint": can_sprint},
+            "parameters": {"target_x": opp_goal_x * 0.50, "target_y": 0.0, "sprint": can_sprint},
             "duration": 0
         }]
     elif position_label in ("LM", "RM", "MID"):
-        flank_y = -12.0 if (position_label == "LM" or my_pos.get("y", 0) < 0) else 12.0
+        flank_y = -6.0 if (position_label == "LM" or my_pos.get("y", 0) < 0) else 6.0
         return [{
             "commandType": "MOVE_TO",
             "playerId": my_player_id,
             "teamId": team_id,
-            "parameters": {"target_x": opp_goal_x * 0.60, "target_y": flank_y, "sprint": can_sprint},
+            "parameters": {"target_x": opp_goal_x * 0.45, "target_y": flank_y, "sprint": can_sprint},
             "duration": 0
         }]
 
