@@ -133,22 +133,32 @@ def test_no_fast_path_for_complex_situation():
 
 def test_teammate_with_ball_shape_support():
     """Teammate with ball should trigger instant shape/support positioning."""
-    game_state = {
-        "ball": {"position": {"x": 20, "y": 10}, "possessionAgentId": "agentId_2"},
+    # 1. Middle third possession -> CB holds 0.65 anchor
+    game_state_mid = {
+        "ball": {"position": {"x": 0, "y": 0}, "possessionAgentId": "agentId_2"},
         "players": [
             {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
             {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -30, "y": 0}, "stamina": 90},
-            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 20, "y": 10}, "stamina": 80},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 0, "y": 0}, "stamina": 80},
         ],
     }
-    
-    result = fast_path_decision(game_state, 0, 1, "CB", RoleRules(label="CB", own_half_only=True))
-    assert result is not None, "Teammate in possession should trigger fast-path shape anchor"
-    assert len(result) == 1
-    assert result[0]["commandType"] == "MOVE_TO"
-    assert result[0]["parameters"]["target_x"] == -55.0 * 0.65
-    assert result[0]["parameters"]["sprint"] is False
-    print("✓ Teammate in possession shape support")
+    result_mid = fast_path_decision(game_state_mid, 0, 1, "CB", RoleRules(label="CB", own_half_only=True))
+    assert result_mid is not None
+    assert result_mid[0]["parameters"]["target_x"] == -55.0 * 0.65
+
+    # 2. Attacking third possession -> CB steps to 0.55 rest-defense anchor
+    game_state_att = {
+        "ball": {"position": {"x": 25, "y": 10}, "possessionAgentId": "agentId_2"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -30, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 25, "y": 10}, "stamina": 80},
+        ],
+    }
+    result_att = fast_path_decision(game_state_att, 0, 1, "CB", RoleRules(label="CB", own_half_only=True))
+    assert result_att is not None
+    assert result_att[0]["parameters"]["target_x"] == -55.0 * 0.55
+    print("✓ Teammate in possession shape support & rest-defense anchor")
 
 
 def test_defensive_marking_near_goal():

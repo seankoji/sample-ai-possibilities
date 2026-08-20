@@ -236,6 +236,54 @@ def test_scenario_marked_player_passes_immediately():
     print("✓ Scenario 10: Marked/pressured player passes immediately verified")
 
 
+def test_scenario_rebound_crashing_and_rest_defense():
+    """Scenario 11: In attacking third, winger on ball flank crashes goalmouth while opposite winger forms rest-defense screen."""
+    game_state = {
+        "ball": {"position": {"x": 35, "y": -15}, "possessionAgentId": "agentId_2"},  # LM on ball
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -25, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 35, "y": -15}, "stamina": 90},
+            {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 10, "y": 15}, "stamina": 90},   # RM opposite flank
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 30, "y": 0}, "stamina": 90},
+        ],
+    }
+    
+    # RM on opposite flank acts as rest-defense screen at midfield (x=0)
+    cmd_rm = fast_path_decision(game_state, 0, 3, "RM", None)
+    assert cmd_rm is not None and cmd_rm[0]["commandType"] == "MOVE_TO"
+    assert cmd_rm[0]["parameters"]["target_x"] == 0.0, "Opposite winger must form rest-defense screen at midfield"
+
+    # ST takes up position in the middle of the box (x ≈ 55 * 0.65 = 35.75)
+    cmd_st = fast_path_decision(game_state, 0, 4, "ST", None)
+    assert cmd_st is not None and cmd_st[0]["commandType"] == "MOVE_TO"
+    assert 30.0 <= cmd_st[0]["parameters"]["target_x"] <= 40.0, "Striker must position in the middle of the box"
+    print("✓ Scenario 11: Box positioning & rest-defense screen verified")
+
+
+def test_scenario_overload_field_switch():
+    """Scenario 12: Winger on heavily overloaded touchline switches play aerially to opposite open winger."""
+    game_state = {
+        "ball": {"position": {"x": 20, "y": -18}, "possessionAgentId": "agentId_2"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 20, "y": -18}, "stamina": 90},
+            {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 20, "y": 22}, "stamina": 90},  # Isolated on opposite touchline
+            # 3 opponents clustered on left flank (y < 0)
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 22, "y": -15}, "stamina": 90},
+            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": 18, "y": -10}, "stamina": 90},
+            {"agentId": "agentId_7", "teamCode": "away", "position": {"x": 25, "y": -20}, "stamina": 90},
+        ],
+    }
+    
+    cmd = fast_path_decision(game_state, 0, 2, "LM", None)
+    assert cmd is not None, "Overloaded touchline must trigger fast-path switch"
+    assert cmd[0]["commandType"] == "PASS"
+    assert cmd[0]["parameters"]["type"] == "AERIAL"
+    assert cmd[0]["parameters"]["target_player_id"] == 3, "Must switch play to isolated opposite winger"
+    print("✓ Scenario 12: Overload-to-isolate field switch verified")
+
+
 if __name__ == "__main__":
     test_scenario_kickoff_rapid_lock()
     test_scenario_defensive_coaching_posture()
@@ -247,4 +295,6 @@ if __name__ == "__main__":
     test_scenario_far_post_shooting_angles()
     test_scenario_ten_player_id_compatibility()
     test_scenario_marked_player_passes_immediately()
-    print("\nAll 10 match scenario regression tests PASSED!")
+    test_scenario_rebound_crashing_and_rest_defense()
+    test_scenario_overload_field_switch()
+    print("\nAll 12 match scenario regression tests PASSED!")
