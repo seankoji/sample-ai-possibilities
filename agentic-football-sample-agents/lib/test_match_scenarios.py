@@ -353,13 +353,17 @@ def test_scenario_line_breaking_through_pass():
 
 
 def test_scenario_danger_zone_14_cutback():
-    """Scenario 16: Winger in half-space cuts back along deck to central box edge."""
+    """Scenario 16: Winger in half-space with blocked goal cuts back along deck to central box edge."""
     game_state = {
         "ball": {"position": {"x": 45, "y": -14}, "possessionAgentId": "agentId_2"}, # LM in half-space
         "players": [
             {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}},
             {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 45, "y": -14}},
             {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 34, "y": 0}},   # ST central zone 14
+            # Opponents directly in the shot cone between LM (45, -14) and goal (55, 0)
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 48, "y": -9}},
+            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": 51, "y": -5}},
+            {"agentId": "agentId_7", "teamCode": "away", "position": {"x": 53, "y": -2}},
         ],
     }
     cmd = fast_path_decision(game_state, 0, 2, "LM", None)
@@ -367,6 +371,24 @@ def test_scenario_danger_zone_14_cutback():
     assert cmd[0]["parameters"]["type"] == "GROUND"
     assert cmd[0]["parameters"]["target_player_id"] == 4
     print("✓ Scenario 16: Danger Zone 14 cutback verified")
+
+
+def test_scenario_midfielder_open_goal_shoot_never_pass():
+    """Scenario 17: Midfielder on ball with clear sight on goal must shoot, never pass."""
+    game_state = {
+        "ball": {"position": {"x": 42, "y": -5}, "possessionAgentId": "agentId_2"}, # LM on ball in box/shooting range
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 42, "y": -5}},  # LM
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 48, "y": 8}},   # ST
+            {"agentId": "agentId_0", "teamCode": "away", "position": {"x": 52, "y": 5}},   # Opponent GK
+        ],
+    }
+    cmd = fast_path_decision(game_state, 0, 2, "LM", None)
+    assert cmd is not None, "Midfielder with open goal must trigger fast-path"
+    assert cmd[0]["commandType"] == "SHOOT", f"Expected SHOOT, got {cmd[0]['commandType']}"
+    assert cmd[0]["parameters"]["power"] >= 0.90
+    print("✓ Scenario 17: Midfielder open-goal shooting (never pass) verified")
 
 
 if __name__ == "__main__":
@@ -386,4 +408,5 @@ if __name__ == "__main__":
     test_scenario_striker_inside_box_instant_shoot()
     test_scenario_line_breaking_through_pass()
     test_scenario_danger_zone_14_cutback()
-    print("\nAll 16 match scenario regression tests PASSED!")
+    test_scenario_midfielder_open_goal_shoot_never_pass()
+    print("\nAll 17 match scenario regression tests PASSED!")

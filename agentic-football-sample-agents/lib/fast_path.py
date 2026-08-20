@@ -429,9 +429,15 @@ def _fast_path_with_ball(
                     "duration": 0
                 }]
 
-    # STRIKER INSIDE BOX: If striker receives the ball inside the box, IMMEDIATELY SHOOT at the best path to goal!
+    # 0. OPEN GOAL / CLEAR BOX FINISHING (Universal for ALL outfield players: ST, LM, RM, MID, CB):
+    # If ANY outfield player is in shooting range (<28m) with a clear shot (blockers <= 1) or inside box (<=22m, blockers <= 2):
+    # IMMEDIATELY SHOOT FIRST-TIME AT FAR POST (POWER 0.95). NEVER PASS AT AN OPEN GOAL!
+    dist_to_opp_goal = dist(my_pos, {"x": opp_goal_x, "y": 0.0})
+    blockers = shot_blockers(my_pos, opp_goal_x, opponents)
     is_in_box = (abs(my_pos.get("x", 0) - opp_goal_x) <= 22.0) and (abs(my_pos.get("y", 0)) <= 16.0)
-    if position_label in ("ST", "FWD", "FWD1", "FWD2") and is_in_box:
+    has_clear_shot = (dist_to_opp_goal < 28.0 and blockers <= 1 and abs(my_pos.get("y", 0)) < 18.0) or (is_in_box and blockers <= 2)
+
+    if my_player_id != 0 and has_clear_shot:
         opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
         low_aim = (adaptive and adaptive.preferred_shot_height == "LOW")
         if opp_gk:
@@ -446,7 +452,7 @@ def _fast_path_with_ball(
             "teamId": team_id,
             "parameters": {
                 "aim_location": aim,
-                "power": 0.9
+                "power": 0.95
             },
             "duration": 0
         }]

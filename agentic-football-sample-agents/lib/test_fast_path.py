@@ -42,7 +42,7 @@ def test_forward_clear_shot():
     assert result is not None, "Forward with clear shot should trigger fast path"
     assert len(result) == 1
     assert result[0]["commandType"] == "SHOOT"
-    assert result[0]["parameters"]["power"] == 0.9
+    assert result[0]["parameters"]["power"] >= 0.90
     # Should aim far post (player on left, aim right)
     assert result[0]["parameters"]["aim_location"] in ["TL", "TR"]
     print("✓ Forward instant shoot")
