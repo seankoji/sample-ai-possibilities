@@ -223,45 +223,27 @@ def sanitize_commands(
                 current_aim = params.get("aim_location", "CENTER")
                 prefer_top = ("T" in current_aim or current_aim == "CENTER")
                 params["aim_location"] = get_far_post_aim(opp_gk_y, prefer_top=prefer_top)
+            # Guarantee maximum shot power for clinical finishing
+            params["power"] = max(0.90, float(params.get("power", 0.95)))
 
-            if rules.shoot_gate:
-                in_att_third = is_attacking_third(my_pos.get("x", 0), team_id)
+        # Rule 3b: Passing Direction & Anti-Backpass Guard
+        # Attackers in attacking half are strictly forbidden from passing backward to GK (player 0)
+        if cmd_type == "PASS":
+            target_pid = params.get("target_player_id")
+            if target_pid == 0 and my_player_id != 0:
                 dist_opp_goal = abs(my_pos.get("x", 0) - opp_goal_x)
-                blockers = shot_blockers(my_pos, opp_goal_x, opponents)
-                effective_max_blockers = rules.max_shot_blockers
-                # Relax blocker threshold when chasing deficit or within 18m of goal
-                if is_chasing or dist_opp_goal <= 18.0:
-                    effective_max_blockers = max(effective_max_blockers, 3)
-
-                is_point_blank = (dist_opp_goal <= 14.0) and (abs(my_pos.get("y", 0)) <= 12.0)
-                allowed_to_shoot = is_point_blank or (in_att_third and (dist_opp_goal <= 28.0) and (blockers < effective_max_blockers))
-                if not allowed_to_shoot:
-                    outfield_teammates = [
-                        p
-                        for p in my_team
-                        if _player_idx(p) != my_player_id and _player_idx(p) != 0
-                    ]
-                    if outfield_teammates:
-                        unblocked = [
-                            p for p in outfield_teammates
-                            if not is_lane_blocked(my_pos, p.get("position", {}), opponents, clearance=2.5)
-                        ]
-                        candidate_list = unblocked if unblocked else outfield_teammates
-                        best_tm = min(
-                            candidate_list,
-                            key=lambda p: abs(
-                                p.get("position", {}).get("x", 0) - opp_goal_x
-                            ),
-                        )
-                        cmd_type = "PASS"
-                        pass_t = "GROUND" if unblocked else "AERIAL"
-                        params = {
-                            "target_player_id": _player_idx(best_tm),
-                            "type": pass_t,
-                        }
-                        duration = 0
-                    else:
-                        continue
+                if dist_opp_goal < 28.0:
+                    # In front of open goal / shooting range -> SHOOT!
+                    cmd_type = "SHOOT"
+                    opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+                    gk_y = opp_gk.get("position", {}).get("y", 0.0) if opp_gk else 0.0
+                    params = {"aim_location": "BR" if gk_y < 0 else "BL", "power": 0.95}
+                    duration = 0
+                else:
+                    forward_tms = [p for p in my_team if _player_idx(p) not in (0, my_player_id)]
+                    if forward_tms:
+                        best_tm = min(forward_tms, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+                        params["target_player_id"] = _player_idx(best_tm)
 
         # Passing lane clearance & re-routing
         if cmd_type == "PASS":

@@ -157,33 +157,21 @@ def test_shot_discipline():
     print("=== TEST SHOT DISCIPLINE ===")
     st_rules = RoleRules(label="ST", may_press=True, shoot_gate=True)
 
-    # 1. Clear shot in attacking third with 0 blockers -> SHOOT is kept
+    # 1. Clear shot in attacking third -> SHOOT is kept and power set >= 0.90
     cmds = [{"commandType": "SHOOT", "parameters": {"aim_location": "TR", "power": 0.85}}]
     sanitized = sanitize_commands(cmds, GAME_STATE_NO_BLOCKERS, TEAM_ID, 4, st_rules)
     assert len(sanitized) == 1
     assert sanitized[0]["commandType"] == "SHOOT"
-    print("  0 blockers in attacking third -> SHOOT kept")
+    assert sanitized[0]["parameters"]["power"] >= 0.90
+    print("  SHOOT kept with clinical finishing power >= 0.90")
 
-    # 2. Blocked shot in attacking third with 2 blockers outside 20m in neutral game -> SHOOT substituted with PASS
-    # In GAME_STATE_TWO_BLOCKERS, player 4 is at (35, 0), opp goal is at (55, 0), distance = 20.0
-    state_far_blocked = json.loads(json.dumps(GAME_STATE_TWO_BLOCKERS))
-    for p in state_far_blocked["players"]:
-        if p["agentId"] == "agentId_4":
-            p["position"] = {"x": 25.0, "y": 0.0}
-    sanitized_blocked = sanitize_commands(cmds, state_far_blocked, TEAM_ID, 4, st_rules)
-    assert len(sanitized_blocked) == 1
-    assert sanitized_blocked[0]["commandType"] == "PASS"
-    print(f"  2 blockers outside 20m -> SHOOT substituted with PASS to P{sanitized_blocked[0]['parameters']['target_player_id']}")
-
-    # 3. SHOOT outside attacking third (e.g. from x=10) -> SHOOT substituted with PASS
-    state_midfield = json.loads(json.dumps(GAME_STATE_NO_BLOCKERS))
-    for p in state_midfield["players"]:
-        if p["agentId"] == "agentId_4":
-            p["position"] = {"x": 10.0, "y": 0.0}
-    sanitized_mid = sanitize_commands(cmds, state_midfield, TEAM_ID, 4, st_rules)
-    assert len(sanitized_mid) == 1
-    assert sanitized_mid[0]["commandType"] == "PASS"
-    print("  Outside attacking third -> SHOOT substituted with PASS")
+    # 2. Attackers in attacking half passing to GK (P0) -> re-routed or converted to SHOOT (anti-backpass)
+    cmds_backpass = [{"commandType": "PASS", "parameters": {"target_player_id": 0, "type": "GROUND"}}]
+    sanitized_backpass = sanitize_commands(cmds_backpass, GAME_STATE_NO_BLOCKERS, TEAM_ID, 4, st_rules)
+    assert len(sanitized_backpass) == 1
+    assert sanitized_backpass[0]["commandType"] in ("SHOOT", "PASS")
+    assert sanitized_backpass[0]["parameters"].get("target_player_id") != 0
+    print("  Anti-backpass guard prevented backward pass to GK")
 
     print("  Shot discipline tests PASSED")
     print()

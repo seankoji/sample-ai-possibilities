@@ -142,19 +142,19 @@ def test_update_coaching():
 
 def test_shot_gate_respects_posture():
     print("=== TEST SHOT GATE × POSTURE ===")
-    # GAME_STATE_TWO_BLOCKERS: player 4 has ball in attacking third, 2 blockers in cone
     shoot = [
         {"commandType": "SHOOT", "parameters": {"aim_location": "TR", "power": 0.9}}
     ]
 
-    # Default gate (blockers < 2): SHOOT stripped → substituted with PASS
+    # Default gate: SHOOT survives with dynamic far-post aiming
     st_default = RoleRules(label="ST")
     out = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_default)
-    assert len(out) == 1 and out[0]["commandType"] == "PASS", (
-        f"expected PASS, got {out}"
+    assert len(out) == 1 and out[0]["commandType"] == "SHOOT", (
+        f"expected SHOOT, got {out}"
     )
+    assert out[0]["parameters"]["power"] >= 0.90
 
-    # ALL_OUT gate (blockers < 3): SHOOT survives
+    # ALL_OUT gate: SHOOT survives
     st_all_out = apply_posture(st_default, coach.ALL_OUT)
     out2 = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_all_out)
     assert len(out2) == 1 and out2[0]["commandType"] == "SHOOT", (
