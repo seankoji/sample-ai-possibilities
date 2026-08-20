@@ -29,6 +29,7 @@ from state import (
     get_score_diff,
     is_lane_blocked,
 )
+from adaptive_memory import analyze_and_adapt, AdaptiveTactics
 
 
 def fast_path_decision(
@@ -61,11 +62,21 @@ def fast_path_decision(
     can_sprint = (my_stamina >= 30)
     press_intensity = 0.85 if can_sprint else 0.45
 
+    # Adaptive In-Game Intelligence Engine (<0.1ms)
+    adaptive = analyze_and_adapt(game_state, team_id)
+
     score_diff = get_score_diff(game_state, team_id)
     game_time = float(game_state.get("gameTime", 0) or 0)
     is_protecting_lead = (score_diff >= 2) or (score_diff >= 1 and game_time > 120.0)
     ball_in_opp_half = (ball_pos.get("x", 0) > 0 if team_id == 0 else ball_pos.get("x", 0) < 0)
-    cb_anchor_x = my_goal_x * 0.35 if ball_in_opp_half else (my_goal_x * 0.55 if is_protecting_lead else my_goal_x * 0.50)
+    
+    if ball_in_opp_half:
+        cb_anchor_x = my_goal_x * 0.35
+    elif is_protecting_lead:
+        cb_anchor_x = my_goal_x * 0.55
+    else:
+        cb_anchor_x = my_goal_x * adaptive.defensive_line_x_factor
+    cb_shift_y = adaptive.defensive_line_shift_y
 
     # Fast path 0: Kickoff formation positioning & compact defensive wall
     play_mode = str(game_state.get("playMode", "")).upper()
@@ -87,7 +98,7 @@ def fast_path_decision(
     if possession_id == my_player_id:
         return _fast_path_with_ball(
             my_player_id, team_id, position_label, me, my_team,
-            opponents, ball_pos, my_pos, my_goal_x, opp_goal_x, can_sprint
+            opponents, ball_pos, my_pos, my_goal_x, opp_goal_x, can_sprint, adaptive
         )
     
     # Fast path 2: Free Ball — ONLY the nearest outfield teammate chases. Others get into receiving pockets!
@@ -105,7 +116,7 @@ def fast_path_decision(
         elif not i_am_nearest and my_player_id != 0:
             # Teammate is chasing and will get there first — stand on box corners/middle to receive the pass!
             if position_label in ("CB", "DEF"):
-                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": cb_anchor_x, "target_y": 0.0, "sprint": False}, "duration": 0}]
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": cb_anchor_x, "target_y": cb_shift_y, "sprint": False}, "duration": 0}]
             elif position_label == "LM":
                 return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.50, "target_y": -13.0, "sprint": False}, "duration": 0}]
             elif position_label == "RM":
@@ -120,6 +131,32 @@ def fast_path_decision(
         in_attack = is_attacking_third(ball_pos.get("x", 0), team_id)
         gk_has_ball = (possession_id == 0)
         
+        # Formation Morphing adjustments (1-1-2 All-Out or 2-2-0 Lockdown)
+        if adaptive.formation_morph == "1-1-2" and position_label in ("LM", "RM"):
+            return [{
+                "commandType": "MOVE_TO",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "target_x": opp_goal_x * 0.65,
+                    "target_y": -8.0 if position_label == "LM" else 8.0,
+                    "sprint": can_sprint
+                },
+                "duration": 0
+            }]
+        elif adaptive.formation_morph == "2-2-0" and position_label in ("LM", "RM"):
+            return [{
+                "commandType": "MOVE_TO",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "target_x": my_goal_x * 0.20,
+                    "target_y": -10.0 if position_label == "LM" else 10.0,
+                    "sprint": False
+                },
+                "duration": 0
+            }]
+
         if position_label == "GK" or my_player_id == 0:
             # Sweeper Keeper: Step up to box edge when team attacks, goal line when defending
             gk_x = my_goal_x * (0.72 if in_attack else 0.95)
@@ -139,7 +176,7 @@ def fast_path_decision(
                 "teamId": team_id,
                 "parameters": {
                     "target_x": cb_x,
-                    "target_y": 0.0,
+                    "target_y": cb_shift_y,
                     "sprint": False
                 },
                 "duration": 0
@@ -295,6 +332,7 @@ def _fast_path_with_ball(
     my_goal_x: float,
     opp_goal_x: float,
     can_sprint: bool = True,
+    adaptive: AdaptiveTactics | None = None,
 ) -> list[dict]:
     """Fast decisions when I have the ball."""
     
@@ -306,8 +344,8 @@ def _fast_path_with_ball(
                 1 for p in opponents
                 if (p.get("position", {}).get("x", 0) < 0 if team_id == 0 else p.get("position", {}).get("x", 0) > 0)
             )
-            if opps_in_our_half >= 3:
-                # 3+ opponents pressing in our half -> play long over the press to forwards/wingers in opposition half
+            if opps_in_our_half >= 3 or (adaptive and adaptive.direct_counter_mode):
+                # 3+ opponents pressing in our half or direct counter mode -> play long over the press
                 forward_targets = [
                     p for p in outfield
                     if (p.get("position", {}).get("x", 0) > 0 if team_id == 0 else p.get("position", {}).get("x", 0) < 0)
@@ -342,12 +380,13 @@ def _fast_path_with_ball(
     is_in_box = (abs(my_pos.get("x", 0) - opp_goal_x) <= 22.0) and (abs(my_pos.get("y", 0)) <= 16.0)
     if position_label in ("ST", "FWD", "FWD1", "FWD2") and is_in_box:
         opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+        low_aim = (adaptive and adaptive.preferred_shot_height == "LOW")
         if opp_gk:
             gk_y = opp_gk.get("position", {}).get("y", 0.0)
-            aim = "TR" if gk_y < 0 else "TL"
+            aim = ("BR" if gk_y < 0 else "BL") if low_aim else ("TR" if gk_y < 0 else "TL")
         else:
             my_y = my_pos.get("y", 0)
-            aim = "TR" if my_y < 0 else "TL"
+            aim = ("BR" if my_y < 0 else "BL") if low_aim else ("TR" if my_y < 0 else "TL")
         return [{
             "commandType": "SHOOT",
             "playerId": my_player_id,
@@ -358,6 +397,30 @@ def _fast_path_with_ball(
             },
             "duration": 0
         }]
+
+    # Swarm Press Counter: One-Touch Wall Pass (give-and-go when swarmed by 2+ opponents)
+    nearest_opp_dist = min(
+        [dist(p.get("position", {}), my_pos) for p in opponents],
+        default=99.0
+    )
+    if adaptive and adaptive.wall_pass_enabled and nearest_opp_dist < 4.5:
+        wall_targets = [
+            p for p in my_team
+            if _player_idx(p) not in (0, my_player_id) and dist(p.get("position", {}), my_pos) < 18.0
+        ]
+        if wall_targets:
+            best_wall = min(wall_targets, key=lambda p: dist(p.get("position", {}), my_pos))
+            if not is_lane_blocked(my_pos, best_wall.get("position", {}), opponents, clearance=1.5):
+                return [{
+                    "commandType": "PASS",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_player_id": _player_idx(best_wall),
+                        "type": "GROUND"
+                    },
+                    "duration": 0
+                }]
 
     # Defender under pressure in own third → instant aerial clearance to flank
     in_own_third = (my_pos.get("x", 0) < -55.0 / 3.0) if team_id == 0 else (my_pos.get("x", 0) > 55.0 / 3.0)
