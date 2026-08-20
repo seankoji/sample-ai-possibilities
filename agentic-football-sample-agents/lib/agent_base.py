@@ -87,6 +87,15 @@ def create_invoke_handler(
                 f"{position_label} agent invoked for team {team_id}, controlling player {effective_pid}"
             )
 
+            # Stateless per-tick execution: clear message history to prevent context ballooning
+            if hasattr(agent, "messages") and isinstance(agent.messages, list):
+                agent.messages.clear()
+            if hasattr(agent, "memory") and hasattr(agent.memory, "clear"):
+                try:
+                    agent.memory.clear()
+                except Exception:
+                    pass
+
             response = agent(state_summary)
             response_text = str(response)
 
