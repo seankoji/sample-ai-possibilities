@@ -284,6 +284,42 @@ def test_scenario_overload_field_switch():
     print("✓ Scenario 12: Overload-to-isolate field switch verified")
 
 
+def test_scenario_gk_possession_outfield_runs_and_long_kick():
+    """Scenario 13: When GK gets ball, mid/fwd sprint into opp half and GK kicks long if >= 3 opps in our half."""
+    game_state = {
+        "ball": {"position": {"x": -50, "y": 0}, "possessionAgentId": "agentId_0"},  # GK has ball
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -35, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": -10, "y": -10}, "stamina": 90}, # LM
+            {"agentId": "agentId_3", "teamCode": "home", "position": {"x": -10, "y": 10}, "stamina": 90},  # RM
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 15, "y": 0}, "stamina": 90},    # ST in opp half
+            # 3 opponents pressing in our half (x < 0)
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -25, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": -20, "y": -10}, "stamina": 90},
+            {"agentId": "agentId_7", "teamCode": "away", "position": {"x": -15, "y": 10}, "stamina": 90},
+        ],
+    }
+    
+    # 1. Midfielder (LM) must sprint into opposition half
+    cmd_lm = fast_path_decision(game_state, 0, 2, "LM", None)
+    assert cmd_lm is not None and cmd_lm[0]["commandType"] == "MOVE_TO"
+    assert cmd_lm[0]["parameters"]["target_x"] > 0, "LM must sprint into opposition half when GK has ball"
+    assert cmd_lm[0]["parameters"]["sprint"] is True
+
+    # 2. Striker (ST) must sprint deep into opposition half
+    cmd_st = fast_path_decision(game_state, 0, 4, "ST", None)
+    assert cmd_st is not None and cmd_st[0]["commandType"] == "MOVE_TO"
+    assert cmd_st[0]["parameters"]["target_x"] > 30.0, "ST must sprint deep into opposition half"
+
+    # 3. Goalkeeper must execute long KICK over the 3-man press
+    cmd_gk = fast_path_decision(game_state, 0, 0, "GK", None)
+    assert cmd_gk is not None and cmd_gk[0]["commandType"] == "GK_DISTRIBUTE"
+    assert cmd_gk[0]["parameters"]["method"] == "KICK", "GK must KICK long when >= 3 opponents are in our half"
+    assert cmd_gk[0]["parameters"]["target_player_id"] == 4, "GK must target forward player upfield"
+    print("✓ Scenario 13: GK possession outfield runs & long kick verified")
+
+
 if __name__ == "__main__":
     test_scenario_kickoff_rapid_lock()
     test_scenario_defensive_coaching_posture()
@@ -297,4 +333,5 @@ if __name__ == "__main__":
     test_scenario_marked_player_passes_immediately()
     test_scenario_rebound_crashing_and_rest_defense()
     test_scenario_overload_field_switch()
-    print("\nAll 12 match scenario regression tests PASSED!")
+    test_scenario_gk_possession_outfield_runs_and_long_kick()
+    print("\nAll 13 match scenario regression tests PASSED!")

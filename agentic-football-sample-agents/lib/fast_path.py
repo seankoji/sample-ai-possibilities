@@ -113,10 +113,11 @@ def fast_path_decision(
                 target_y = 0.0 if position_label in ("ST", "FWD") else (-6.0 if position_label == "FWD1" else 6.0)
                 return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.58, "target_y": target_y, "sprint": can_sprint}, "duration": 0}]
 
-    # Fast path 3: Teammate has ball → Receiving on Box Corners / Middle (<5ms)
+    # Fast path 3: Teammate has ball → Receiving on Box Corners / Opposition Half on GK (<5ms)
     _, _, we_have_ball = get_possession_info(ball, players, team_id)
     if we_have_ball and possession_id != my_player_id:
         in_attack = is_attacking_third(ball_pos.get("x", 0), team_id)
+        gk_has_ball = (possession_id == 0)
         
         if position_label == "GK" or my_player_id == 0:
             # Sweeper Keeper: Step up to box edge when team attacks, goal line when defending
@@ -144,6 +145,19 @@ def fast_path_decision(
             }]
         elif position_label in ("LM", "RM"):
             flank_y = -13.0 if position_label == "LM" else 13.0
+            if gk_has_ball:
+                # When goalie gets ball, all mid players sprint into opposition half!
+                return [{
+                    "commandType": "MOVE_TO",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_x": opp_goal_x * 0.45,
+                        "target_y": flank_y,
+                        "sprint": can_sprint
+                    },
+                    "duration": 0
+                }]
             is_ball_my_flank = (position_label == "LM" and ball_pos.get("y", 0) < 0) or (position_label == "RM" and ball_pos.get("y", 0) >= 0)
             if in_attack and not is_ball_my_flank:
                 # Rest-Defense Screen on opposite flank: sit at midfield to kill clearances
@@ -173,6 +187,20 @@ def fast_path_decision(
                     "duration": 0
                 }]
         elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
+            if gk_has_ball:
+                # Striker sprints deep into opposition half for long GK delivery!
+                target_y = 0.0 if position_label in ("ST", "FWD") else (-6.0 if position_label == "FWD1" else 6.0)
+                return [{
+                    "commandType": "MOVE_TO",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_x": opp_goal_x * 0.65,
+                        "target_y": target_y,
+                        "sprint": can_sprint
+                    },
+                    "duration": 0
+                }]
             # Middle of the box / central "D"
             target_x = opp_goal_x * (0.65 if in_attack else 0.58)
             target_y = 0.0 if position_label in ("ST", "FWD") else (-6.0 if position_label == "FWD1" else 6.0)
@@ -269,21 +297,45 @@ def _fast_path_with_ball(
 ) -> list[dict]:
     """Fast decisions when I have the ball."""
     
-    # GK with ball → instant distribute to nearest outfield teammate
+    # GK with ball → long kick if >= 3 opponents in our half, else open distribution
     if my_player_id == 0:
         outfield = [p for p in my_team if _player_idx(p) != 0]
         if outfield:
-            nearest = min(outfield, key=lambda p: dist(p.get("position", {}), my_pos))
-            return [{
-                "commandType": "GK_DISTRIBUTE",
-                "playerId": my_player_id,
-                "teamId": team_id,
-                "parameters": {
-                    "target_player_id": _player_idx(nearest),
-                    "method": "THROW" if dist(nearest.get("position", {}), my_pos) < 25 else "KICK"
-                },
-                "duration": 0
-            }]
+            opps_in_our_half = sum(
+                1 for p in opponents
+                if (p.get("position", {}).get("x", 0) < 0 if team_id == 0 else p.get("position", {}).get("x", 0) > 0)
+            )
+            if opps_in_our_half >= 3:
+                # 3+ opponents pressing in our half -> play long over the press to forwards/wingers in opposition half
+                forward_targets = [
+                    p for p in outfield
+                    if (p.get("position", {}).get("x", 0) > 0 if team_id == 0 else p.get("position", {}).get("x", 0) < 0)
+                ]
+                if not forward_targets:
+                    forward_targets = outfield
+                target = max(forward_targets, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
+                return [{
+                    "commandType": "GK_DISTRIBUTE",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_player_id": _player_idx(target),
+                        "method": "KICK"
+                    },
+                    "duration": 0
+                }]
+            else:
+                nearest = min(outfield, key=lambda p: dist(p.get("position", {}), my_pos))
+                return [{
+                    "commandType": "GK_DISTRIBUTE",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_player_id": _player_idx(nearest),
+                        "method": "THROW" if dist(nearest.get("position", {}), my_pos) < 25 else "KICK"
+                    },
+                    "duration": 0
+                }]
 
     # Defender under pressure in own third → instant aerial clearance to flank
     in_own_third = (my_pos.get("x", 0) < -55.0 / 3.0) if team_id == 0 else (my_pos.get("x", 0) > 55.0 / 3.0)
