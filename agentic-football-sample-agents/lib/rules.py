@@ -389,10 +389,10 @@ def sanitize_commands(
             elif my_player_id == 1 or getattr(rules, "own_half_only", False):
                 if team_id == 0:
                     max_x = 15.0 if is_chasing else 0.0
-                    params["target_x"] = max(-36.0, min(max_x, tx))
+                    params["target_x"] = max(-32.0, min(max_x, tx))
                 else:
                     min_x = -15.0 if is_chasing else 0.0
-                    params["target_x"] = max(min_x, min(36.0, tx))
+                    params["target_x"] = max(min_x, min(32.0, tx))
                 params["target_y"] = max(-8.0, min(8.0, ty))
             else:
                 params["target_x"] = max(-35.0, min(35.0, tx))

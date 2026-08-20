@@ -160,9 +160,9 @@ CB_CONFIG = FallbackConfig(
     pass_exclude_ids=[0],
     default_x_factor=0.50, default_x_ref="my_goal", default_y=0,
     support_x_factor=-0.50, support_y=0, support_sprint=False,
-    mark_threshold=30.0, mark_tightness="TIGHT",
+    mark_threshold=0.0, mark_tightness="LOOSE",
     clear_when_pressured=True, phase_logic=True,
-    press_distance=8.0, press_intensity=0.5,
+    press_distance=6.5, press_intensity=0.5,
     default_stance=2,
     last_resort_command_type="SET_STANCE", last_resort_params={"stance": 2},
 )

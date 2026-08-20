@@ -175,11 +175,11 @@ def test_defensive_marking_near_goal():
     
     rules = RoleRules(label="CB", own_half_only=True)
     result = fast_path_decision(game_state, 0, 1, "CB", rules)
-    assert result is not None, "Dangerous opponent in box should trigger instant mark"
+    assert result is not None, "CB must trigger fast path zonal defense"
     assert len(result) == 1
-    assert result[0]["commandType"] == "MARK"
-    assert result[0]["parameters"]["target_player_id"] == 5  # agentId_5 is closest to goal (-40)
-    print("✓ Defensive marking near goal")
+    assert result[0]["commandType"] == "MOVE_TO"
+    assert result[0]["parameters"]["target_x"] >= -32.0, "CB must never drop deeper than -32m"
+    print("✓ Defensive zonal rest defense near goal")
 
 
 def test_defender_clearance_under_pressure():

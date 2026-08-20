@@ -90,16 +90,11 @@ def test_coordination_phase_defending_box():
     
     cmds = run_5v5_tick(game_state, team_id=0)
     
-    # CB marks the dangerous attacker closest to goal (agentId_5 at x=-42)
+    # CB holds zonal rest-defense line (-27.5m) and never drops into goal
     cb_cmd = next((c for c in cmds if c["playerId"] == 1), None)
-    assert cb_cmd is not None and cb_cmd["commandType"] == "MARK"
-    assert cb_cmd["parameters"]["target_player_id"] == 5
-    
-    # Verify no two players are marking the exact same target
-    marks = [c for c in cmds if c["commandType"] == "MARK"]
-    mark_targets = [m["parameters"]["target_player_id"] for m in marks]
-    assert len(mark_targets) == len(set(mark_targets)), "No duplicate marking assignments"
-    print("✓ Phase 2: Defending box coordination & mark allocation verified")
+    assert cb_cmd is not None and cb_cmd["commandType"] == "MOVE_TO"
+    assert cb_cmd["parameters"]["target_x"] >= -32.0, "CB must never drop deeper than -32m"
+    print("✓ Phase 2: Defending box coordination & zonal anchor verified")
 
 
 def test_coordination_phase_attacking_shot():
