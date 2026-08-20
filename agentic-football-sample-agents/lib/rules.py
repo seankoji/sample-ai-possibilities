@@ -376,17 +376,40 @@ def sanitize_commands(
                     "sprint": False,
                 }
                 duration = 0
-        # Rule 5: Wall Anti-Collision & Compact Pitch Boundaries (10% shorter and narrower)
-        # Prevents attackers running into the perimeter walls or standing too wide/deep!
+        # Rule 5: Wall Anti-Collision, Outfield Compactness & CB Anti-Goal Clamp
+        # 1. CB / DEF is strictly prohibited from dropping deeper than x = -36.0 (Team 0) / 36.0 (Team 1) -> NEVER stands in goal!
+        # 2. Outfield attackers and midfielders bounded to |x| <= 38.0, |y| <= 12.0
+        # 3. Only GK is allowed inside the goal area (|x| > 36.0).
         if cmd_type == "MOVE_TO":
             tx = float(params.get("target_x", 0.0))
             ty = float(params.get("target_y", 0.0))
-            if my_player_id != 0:
-                params["target_x"] = max(-40.0, min(40.0, tx))
-                params["target_y"] = max(-12.0, min(12.0, ty))
-            else:
+            if my_player_id == 0:
                 params["target_x"] = max(-52.0, min(52.0, tx))
                 params["target_y"] = max(-20.0, min(20.0, ty))
+            elif my_player_id == 1 or getattr(rules, "own_half_only", False):
+                if team_id == 0:
+                    max_x = 15.0 if is_chasing else 0.0
+                    params["target_x"] = max(-36.0, min(max_x, tx))
+                else:
+                    min_x = -15.0 if is_chasing else 0.0
+                    params["target_x"] = max(min_x, min(36.0, tx))
+                params["target_y"] = max(-8.0, min(8.0, ty))
+            else:
+                params["target_x"] = max(-38.0, min(38.0, tx))
+                params["target_y"] = max(-12.0, min(12.0, ty))
+
+        # Rule 5b: Anti-Goal Line MARK guard — don't follow opponents into our own net
+        if cmd_type == "MARK" and getattr(rules, "own_half_only", False):
+            target_pid = params.get("target_player_id")
+            target_opp = next((p for p in opponents if _player_idx(p) == target_pid), None)
+            if target_opp:
+                opp_x = target_opp.get("position", {}).get("x", 0)
+                is_in_our_box = (opp_x < -36.0) if team_id == 0 else (opp_x > 36.0)
+                if is_in_our_box:
+                    # Hold the 25% pitch line instead of standing on top of GK in goal
+                    cmd_type = "MOVE_TO"
+                    params = {"target_x": my_goal_x * 0.50, "target_y": max(-6.0, min(6.0, target_opp.get("position", {}).get("y", 0))), "sprint": False}
+                    duration = 0
 
         # Rule 4: Stamina preservation — no sprint below stamina 30
         if cmd_type == "MOVE_TO" and params.get("sprint", False):

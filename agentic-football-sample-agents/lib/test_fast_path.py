@@ -168,7 +168,7 @@ def test_defensive_marking_near_goal():
         "players": [
             {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
             {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -35, "y": 5}, "stamina": 90},
-            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -40, "y": 2}, "stamina": 90},
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -30, "y": 2}, "stamina": 90},
             {"agentId": "agentId_6", "teamCode": "away", "position": {"x": -25, "y": 10}, "stamina": 90},
         ],
     }

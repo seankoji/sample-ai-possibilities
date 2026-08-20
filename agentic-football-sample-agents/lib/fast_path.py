@@ -280,13 +280,14 @@ def fast_path_decision(
                 "duration": 0
             }]
 
-    # Fast path 4: Defensive marking for CB/DEF when opponent is in our defensive territory
+    # Fast path 4: Defensive positioning for CB/DEF (NEVER steps deeper than 18-yard line / into goal)
     if not we_have_ball and role_rules and getattr(role_rules, "own_half_only", False):
         if opponents:
             dangerous = min(opponents, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
-            dist_to_my_goal = abs(dangerous.get("position", {}).get("x", 0) - my_goal_x)
-            # Dangerous opponent within 35 units of our goal line
-            if dist_to_my_goal < 35.0:
+            opp_x = dangerous.get("position", {}).get("x", 0)
+            dist_to_my_goal = abs(opp_x - my_goal_x)
+            # Only mark opponent if they are in the defensive zone outside the 6-yard box (dist between 19m and 38m)
+            if 19.0 <= dist_to_my_goal <= 38.0:
                 return [{
                     "commandType": "MARK",
                     "playerId": my_player_id,
@@ -296,6 +297,19 @@ def fast_path_decision(
                         "tightness": "TIGHT"
                     },
                     "duration": 3
+                }]
+            else:
+                # Opponent is either too deep in our box (leave to GK) or too far away: hold 25% rest-defense anchor!
+                return [{
+                    "commandType": "MOVE_TO",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_x": cb_anchor_x,
+                        "target_y": max(-6.0, min(6.0, dangerous.get("position", {}).get("y", 0))),
+                        "sprint": False
+                    },
+                    "duration": 0
                 }]
 
     # Fast path 5: Opponent has ball — ONLY nearest outfield teammate presses within 6.5m (prevents overcommitment)

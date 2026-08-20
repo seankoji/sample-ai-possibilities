@@ -83,8 +83,8 @@ def test_coordination_phase_defending_box():
             {"agentId": "agentId_2", "teamCode": "home", "position": {"x": -25, "y": -15}, "stamina": 85},
             {"agentId": "agentId_3", "teamCode": "home", "position": {"x": -25, "y": 15}, "stamina": 85},
             {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 0, "y": 0}, "stamina": 90},
-            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -42, "y": 0}, "stamina": 90},
-            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": -30, "y": 5}, "stamina": 90},
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -32, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": -25, "y": 5}, "stamina": 90},
         ],
     }
     
