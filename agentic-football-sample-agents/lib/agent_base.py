@@ -1,7 +1,6 @@
-"""Base agent factory for AI soccer position agents."""
-
+from __future__ import annotations
 import json
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 from strands import Agent
 from strands.models import BedrockModel
 
@@ -9,10 +8,27 @@ from parsing import parse_commands
 from state import summarize_state
 from fallback import FallbackConfig, build_last_resort
 
+if TYPE_CHECKING:
+    from rules import RoleRules
 
-def create_agent(system_prompt: str, model_id: str = "us.amazon.nova-micro-v1:0") -> Agent:
-    """Create a Strands Agent with the given system prompt."""
-    model = BedrockModel(model_id=model_id)
+
+def create_agent(
+    system_prompt: str,
+    model_id: str = "us.amazon.nova-micro-v1:0",
+    max_tokens: int = 150,
+    temperature: float = 0.0,
+) -> Agent:
+    """Create a Strands Agent with the given system prompt and inference parameters."""
+    try:
+        model = BedrockModel(model_id=model_id, max_tokens=max_tokens, temperature=temperature)
+    except TypeError:
+        try:
+            model = BedrockModel(
+                model_id=model_id,
+                inference_config={"maxTokens": max_tokens, "temperature": temperature},
+            )
+        except TypeError:
+            model = BedrockModel(model_id=model_id)
     return Agent(model=model, system_prompt=system_prompt)
 
 
@@ -23,12 +39,13 @@ def create_invoke_handler(
     position_label: str,
     fallback_fn: Callable[[dict, int, int], list[dict]],
     fallback_cfg: FallbackConfig,
+    role_rules: RoleRules | None = None,
 ):
     """Create and register the @app.entrypoint invoke handler.
 
     Three layers of error handling, from best to worst:
-      1. LLM response → parse into commands
-      2. fallback_fn(game_state, team_id, my_player_id) → rule-based commands
+      1. LLM response → parse into commands (→ sanitize if role_rules)
+      2. fallback_fn(game_state, team_id, my_player_id) → rule-based commands (→ sanitize if role_rules)
       3. last-resort command from fallback_cfg → single safe command
     """
     log = app.logger
@@ -48,7 +65,8 @@ def create_invoke_handler(
             effective_pid = my_players[0] if my_players else my_player_id
 
             state_summary = summarize_state(
-                game_state, team_id, effective_pid, position_label
+                game_state, team_id, effective_pid, position_label,
+                tactical=(role_rules is not None),
             )
             log.info(f"{position_label} agent invoked for team {team_id}, controlling player {effective_pid}")
 
@@ -62,14 +80,25 @@ def create_invoke_handler(
                 log.warn(f"{position_label} recovered malformed JSON from the model: {raw[:200]}")
 
             commands = parse_commands(response_text, team_id, effective_pid, on_recovered)
+            if role_rules is not None and commands:
+                from rules import sanitize_commands
+                commands = sanitize_commands(commands, game_state, team_id, effective_pid, role_rules)
 
             if commands:
                 log.info(f"LLM returned {len(commands)} commands: "
                          f"{[c.get('commandType') for c in commands]}")
                 yield json.dumps(commands)
             else:
-                log.warn(f"LLM parse failed, using fallback. Response: {response_text[:200]}")
+                log.warn(f"LLM parse/sanitize failed, using fallback. Response: {response_text[:200]}")
                 commands = fallback_fn(game_state, team_id, effective_pid)
+                if role_rules is not None and commands:
+                    from rules import sanitize_commands
+                    commands = sanitize_commands(commands, game_state, team_id, effective_pid, role_rules)
+                if not commands:
+                    cmd = dict(last_resort)
+                    cmd["teamId"] = team_id
+                    cmd["playerId"] = effective_pid
+                    commands = [cmd]
                 log.info(f"Fallback returned {len(commands)} commands")
                 yield json.dumps(commands)
 
@@ -85,10 +114,19 @@ def create_invoke_handler(
                     team_id,
                     effective_pid,
                 )
+                if role_rules is not None and commands:
+                    from rules import sanitize_commands
+                    commands = sanitize_commands(commands, prompt_data.get("gameState", {}), team_id, effective_pid, role_rules)
+                if not commands:
+                    cmd = dict(last_resort)
+                    cmd["teamId"] = team_id
+                    cmd["playerId"] = effective_pid
+                    commands = [cmd]
                 yield json.dumps(commands)
             except Exception:
                 cmd = dict(last_resort)
                 cmd["teamId"] = 0  # best guess when payload parsing also failed
+                cmd["playerId"] = effective_pid if "effective_pid" in locals() else my_player_id
                 yield json.dumps([cmd])
 
     return invoke

@@ -55,6 +55,15 @@ class FallbackConfig:
     # Pass target filter (player IDs to exclude from pass targets)
     pass_exclude_ids: list[int] = field(default_factory=list)
 
+    # GK: prefer these targets (LM/RM)
+    distribute_wide_ids: list[int] = field(default_factory=list)
+
+    # CB: own third + opponent within 5 → long AERIAL PASS to wide flank
+    clear_when_pressured: bool = False
+
+    # Diamond phase-ordered decision tree
+    phase_logic: bool = False
+
     # Default stance when player not found
     default_stance: int = 0
 
@@ -119,6 +128,63 @@ FWD2_CONFIG = FallbackConfig(
     last_resort_duration=3,
 )
 
+# ---------------------------------------------------------------------------
+# Diamond Formation Configs (1-2-1)
+# ---------------------------------------------------------------------------
+
+GK_DIAMOND_CONFIG = FallbackConfig(
+    possession_action="GK_DISTRIBUTE",
+    distribute_wide_ids=[2, 3],      # LM/RM — never central
+    default_x_factor=0.9, default_x_ref="my_goal", default_y="track_ball",
+    default_stance=2,
+    last_resort_command_type="SET_STANCE", last_resort_params={"stance": 2},
+)
+
+CB_CONFIG = FallbackConfig(
+    possession_action="PASS",
+    pass_exclude_ids=[0],
+    default_x_factor=0.55, default_x_ref="my_goal", default_y=0,
+    mark_threshold=30.0, mark_tightness="TIGHT",
+    clear_when_pressured=True, phase_logic=True,
+    press_distance=12.0, press_intensity=0.6,
+    default_stance=2,
+    last_resort_command_type="SET_STANCE", last_resort_params={"stance": 2},
+)
+
+LM_CONFIG = FallbackConfig(
+    possession_action="SHOOT_OR_PASS",
+    default_x_factor=0.4, default_x_ref="ball_x", default_y=-15,
+    press_distance=15.0, press_intensity=0.6,
+    shoot_threshold=20.0, shoot_aim="TL", shoot_power=0.8,
+    support_x_factor=0.5, support_y=-15, support_sprint=False,
+    phase_logic=True, default_stance=0,
+    last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.5},
+    last_resort_duration=3,
+)
+
+RM_CONFIG = FallbackConfig(
+    possession_action="SHOOT_OR_PASS",
+    default_x_factor=0.4, default_x_ref="ball_x", default_y=15,
+    press_distance=15.0, press_intensity=0.6,
+    shoot_threshold=20.0, shoot_aim="TR", shoot_power=0.8,
+    support_x_factor=0.5, support_y=15, support_sprint=False,
+    phase_logic=True, default_stance=0,
+    last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.5},
+    last_resort_duration=3,
+)
+
+ST_CONFIG = FallbackConfig(
+    possession_action="SHOOT_OR_ADVANCE",
+    advance_x_factor=0.6, advance_y=0, advance_sprint=False,   # hold-up: no sprint
+    support_x_factor=0.55, support_y=0, support_sprint=False,
+    default_x_factor=0.35, default_x_ref="opp_goal", default_y=0,
+    press_distance=15.0, press_intensity=0.7,
+    shoot_threshold=20.0, shoot_aim="TR", shoot_power=0.85,
+    phase_logic=True, default_stance=1,
+    last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.6},
+    last_resort_duration=3,
+)
+
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -155,6 +221,42 @@ def build_fallback(cfg: FallbackConfig) -> Callable[[dict, int, int], list[dict]
             return [_cmd("SET_STANCE", my_player_id, team_id, {"stance": cfg.default_stance})]
 
         pos = me.get("position", {"x": 0, "y": 0})
+
+        if cfg.phase_logic:
+            # 1. I have the ball
+            if possession_id == my_player_id:
+                return _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, opp_goal_x)
+
+            _, _, we_have_ball = get_possession_info(ball, players, team_id)
+
+            # 2. Teammate has ball → support MOVE_TO
+            if we_have_ball:
+                return [_cmd("MOVE_TO", my_player_id, team_id,
+                             {"target_x": opp_goal_x * cfg.support_x_factor,
+                              "target_y": cfg.support_y, "sprint": cfg.support_sprint})]
+
+            # 3. Opponent has ball / loose ball
+            from state import is_nearest_to_ball
+            my_team = [p for p in players if _is_my_team(p, team_id)]
+            if is_nearest_to_ball(pos, my_player_id, my_team, ball_pos) and dist(pos, ball_pos) < cfg.press_distance:
+                return [_cmd("PRESS_BALL", my_player_id, team_id,
+                             {"intensity": cfg.press_intensity}, duration=cfg.press_duration)]
+
+            if cfg.mark_threshold > 0:
+                opponents = [p for p in players if not _is_my_team(p, team_id)]
+                if opponents:
+                    dangerous = min(opponents, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
+                    if abs(dangerous.get("position", {}).get("x", 0) - my_goal_x) < cfg.mark_threshold:
+                        return [_cmd("MARK", my_player_id, team_id,
+                                     {"target_player_id": _player_idx(dangerous),
+                                      "tightness": cfg.mark_tightness}, duration=3)]
+
+            # Default position
+            tx, ty = _default_pos(cfg, my_goal_x, opp_goal_x, ball_pos)
+            return [_cmd("MOVE_TO", my_player_id, team_id,
+                          {"target_x": tx, "target_y": ty, "sprint": False})]
+
+        # --- Standard (legacy) logic when phase_logic=False ---
 
         # --- We have the ball ---
         if possession_id == my_player_id:
@@ -204,6 +306,15 @@ def _cmd(cmd_type: str, pid: int, tid: int, params: dict, duration: int = 0) -> 
 def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, opp_goal_x):
     """Handle possession for all position types."""
     if cfg.possession_action == "GK_DISTRIBUTE":
+        if cfg.distribute_wide_ids:
+            wide_teammates = [
+                p for p in players
+                if _is_my_team(p, team_id) and _player_idx(p) in cfg.distribute_wide_ids and _player_idx(p) != my_player_id
+            ]
+            if wide_teammates:
+                target = min(wide_teammates, key=lambda p: dist(p.get("position", {}), pos))
+                return [_cmd("GK_DISTRIBUTE", my_player_id, team_id,
+                             {"target_player_id": _player_idx(target), "method": "THROW"})]
         teammates = [p for p in players if _is_my_team(p, team_id) and _player_idx(p) != my_player_id]
         if teammates:
             nearest = min(teammates, key=lambda p: dist(p.get("position", {}), pos))
@@ -211,6 +322,25 @@ def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, op
                          {"target_player_id": _player_idx(nearest), "method": "THROW"})]
         return [_cmd("GK_DISTRIBUTE", my_player_id, team_id,
                      {"target_player_id": 1, "method": "THROW"})]
+
+    if cfg.clear_when_pressured:
+        in_own_third = (pos.get("x", 0) < -55.0 / 3.0) if team_id == 0 else (pos.get("x", 0) > 55.0 / 3.0)
+        opponents = [p for p in players if not _is_my_team(p, team_id)]
+        pressured = any(dist(p.get("position", {}), pos) < 5.0 for p in opponents)
+        if in_own_third and pressured:
+            wide_targets = [
+                p for p in players
+                if _is_my_team(p, team_id) and _player_idx(p) in (2, 3) and _player_idx(p) != my_player_id
+            ]
+            if not wide_targets:
+                wide_targets = [
+                    p for p in players
+                    if _is_my_team(p, team_id) and _player_idx(p) not in (0, my_player_id)
+                ]
+            if wide_targets:
+                target = min(wide_targets, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+                return [_cmd("PASS", my_player_id, team_id,
+                             {"target_player_id": _player_idx(target), "type": "AERIAL"})]
 
     if cfg.possession_action == "PASS":
         exclude = set(cfg.pass_exclude_ids) | {my_player_id}

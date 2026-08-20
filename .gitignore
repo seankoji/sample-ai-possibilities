@@ -78,7 +78,9 @@
 
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
+**/*.pyc
 *$py.class
 *.so
 .Python
@@ -86,6 +88,9 @@ venv/
 env/
 ENV/
 .venv
+**/.venv/
+**/uv.lock
+**/cdk.out/
 *.egg-info/
 dist/
 build/

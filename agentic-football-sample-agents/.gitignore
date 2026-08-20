@@ -1,0 +1,31 @@
+# Python virtual environments & locks
+.venv/
+**/.venv/
+uv.lock
+**/uv.lock
+
+# Bytecode & Caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+**/*.pyc
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# CDK & Deployment output
+cdk.out/
+**/cdk.out/
+.bedrock_agentcore.yaml
+
+# OS & Editor
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

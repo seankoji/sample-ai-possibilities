@@ -26,11 +26,37 @@ class _FakeApp:
     def run(self): pass
 
 
+class _FakeModel:
+    """Minimal stand-in for BedrockModel."""
+    def __init__(self, model_id: str = "us.amazon.nova-micro-v1:0", **kwargs):
+        self.model_id = model_id
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class _FakeAgent:
+    """Minimal stand-in for strands Agent."""
+    def __init__(self, model=None, system_prompt: str = "", **kwargs):
+        self.model = model
+        self.system_prompt = system_prompt
+    def __call__(self, prompt, **kwargs):
+        return "[]"
+
+
 def mock_agentcore():
-    """Inject fake bedrock_agentcore modules so agent code can import cleanly."""
+    """Inject fake bedrock_agentcore modules and strands so agent code can import cleanly."""
     sys.modules["bedrock_agentcore"] = type(sys)("bedrock_agentcore")
     sys.modules["bedrock_agentcore.runtime"] = type(sys)("bedrock_agentcore.runtime")
     sys.modules["bedrock_agentcore.runtime"].BedrockAgentCoreApp = _FakeApp
+
+    if "strands" not in sys.modules:
+        strands_mod = type(sys)("strands")
+        strands_mod.Agent = _FakeAgent
+        strands_models_mod = type(sys)("strands.models")
+        strands_models_mod.BedrockModel = _FakeModel
+
+        sys.modules["strands"] = strands_mod
+        sys.modules["strands.models"] = strands_models_mod
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +94,16 @@ def mock_agentcore_memory():
     session_mod = type(sys)("bedrock_agentcore.memory.integrations.strands.session_manager")
 
     strands_mod.AgentCoreMemorySessionManager = _FakeAgentCoreMemorySessionManager
+    strands_mod.session_manager = session_mod
+    session_mod.AgentCoreMemorySessionManager = _FakeAgentCoreMemorySessionManager
+
+    strands_mod.AgentCoreMemoryConfig = _FakeAgentCoreMemoryConfig
+    strands_mod.config = config_mod
     config_mod.AgentCoreMemoryConfig = _FakeAgentCoreMemoryConfig
+
+    integ_mod.strands = strands_mod
+    mem_mod.integrations = integ_mod
+    sys.modules["bedrock_agentcore"].memory = mem_mod
 
     sys.modules["bedrock_agentcore.memory"] = mem_mod
     sys.modules["bedrock_agentcore.memory.integrations"] = integ_mod
@@ -151,4 +186,99 @@ GAME_STATE = {
         {"agentId": "agentId_4", "teamCode": "away", "position": {"x": 35, "y": 5}, "velocity": {"x": -2, "y": 0}, "orientation": 0, "stamina": 0.70, "currentAction": 1, "lastAction": "FindOpenSpace", "speed": 1.5, "isSprinting": True},
     ],
     "teamChat": [],
+}
+
+# 0-blocker shot scenario (player 4 has ball in attacking third, clear lane to goal)
+GAME_STATE_NO_BLOCKERS = {
+    "tick": 200, "gameTime": 150.0, "playMode": "OPEN_PLAY", "modeTeamId": None,
+    "score": {"home": 0, "away": 0},
+    "ball": {"position": {"x": 35.0, "y": 0.0, "z": 0}, "isFree": False, "possessionAgentId": "agentId_4"},
+    "players": [
+        {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -10, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 10, "y": -15}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 10, "y": 15}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 35, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_0", "teamCode": "away", "position": {"x": 50, "y": 25}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "away", "position": {"x": 20, "y": 20}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "away", "position": {"x": 20, "y": -20}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "away", "position": {"x": 40, "y": -20}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "away", "position": {"x": 40, "y": 20}, "stamina": 0.8},
+    ],
+}
+
+# 2-blocker shot scenario (player 4 has ball in attacking third, but 2 opponents in shot cone)
+GAME_STATE_TWO_BLOCKERS = {
+    "tick": 200, "gameTime": 150.0, "playMode": "OPEN_PLAY", "modeTeamId": None,
+    "score": {"home": 0, "away": 0},
+    "ball": {"position": {"x": 35.0, "y": 0.0, "z": 0}, "isFree": False, "possessionAgentId": "agentId_4"},
+    "players": [
+        {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -10, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 10, "y": -15}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 10, "y": 15}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 35, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_0", "teamCode": "away", "position": {"x": 50, "y": 25}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "away", "position": {"x": 42, "y": 1.0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "away", "position": {"x": 45, "y": -1.0}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "away", "position": {"x": 20, "y": -20}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "away", "position": {"x": 20, "y": 20}, "stamina": 0.8},
+    ],
+}
+
+# Ball on opposite flank (ball at y = 20, right flank)
+GAME_STATE_OPPOSITE_FLANK = {
+    "tick": 200, "gameTime": 150.0, "playMode": "OPEN_PLAY", "modeTeamId": None,
+    "score": {"home": 0, "away": 0},
+    "ball": {"position": {"x": 10.0, "y": 20.0, "z": 0}, "isFree": False, "possessionAgentId": "agentId_3"},
+    "players": [
+        {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -10, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 5, "y": -15}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 10, "y": 20}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 25, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_0", "teamCode": "away", "position": {"x": 50, "y": 0}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "away", "position": {"x": 10, "y": 18}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "away", "position": {"x": 20, "y": 10}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "away", "position": {"x": 30, "y": -10}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "away", "position": {"x": 35, "y": 5}, "stamina": 0.8},
+    ],
+}
+
+# Low stamina scenario (player stamina 25)
+GAME_STATE_LOW_STAMINA = {
+    "tick": 200, "gameTime": 150.0, "playMode": "OPEN_PLAY", "modeTeamId": None,
+    "score": {"home": 0, "away": 0},
+    "ball": {"position": {"x": 0.0, "y": 0.0, "z": 0}, "isFree": True},
+    "players": [
+        {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 0.25},
+        {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -10, "y": 0}, "stamina": 0.25},
+        {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 5, "y": -15}, "stamina": 0.25},
+        {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 5, "y": 15}, "stamina": 0.25},
+        {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 25, "y": 0}, "stamina": 0.25},
+        {"agentId": "agentId_0", "teamCode": "away", "position": {"x": 50, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_1", "teamCode": "away", "position": {"x": 0, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "away", "position": {"x": 20, "y": 10}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "away", "position": {"x": 30, "y": -10}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "away", "position": {"x": 35, "y": 5}, "stamina": 0.8},
+    ],
+}
+
+# Tie-break scenario (player 1 and player 2 at similar distance to ball)
+GAME_STATE_TIE_BREAK = {
+    "tick": 200, "gameTime": 150.0, "playMode": "OPEN_PLAY", "modeTeamId": None,
+    "score": {"home": 0, "away": 0},
+    "ball": {"position": {"x": 0.0, "y": 0.0, "z": 0}, "isFree": True},
+    "players": [
+        {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "home", "position": {"x": 10.0, "y": 0.0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 10.5, "y": 0.0}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 30.0, "y": 15.0}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 30.0, "y": -15.0}, "stamina": 0.8},
+        {"agentId": "agentId_0", "teamCode": "away", "position": {"x": 50, "y": 0}, "stamina": 1.0},
+        {"agentId": "agentId_1", "teamCode": "away", "position": {"x": 0, "y": 0}, "stamina": 0.8},
+        {"agentId": "agentId_2", "teamCode": "away", "position": {"x": 20, "y": 10}, "stamina": 0.8},
+        {"agentId": "agentId_3", "teamCode": "away", "position": {"x": 30, "y": -10}, "stamina": 0.8},
+        {"agentId": "agentId_4", "teamCode": "away", "position": {"x": 35, "y": 5}, "stamina": 0.8},
+    ],
 }
