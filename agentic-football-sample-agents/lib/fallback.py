@@ -170,23 +170,23 @@ CB_CONFIG = FallbackConfig(
 LM_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_PASS",
     default_x_factor=0.60, default_x_ref="opp_goal", default_y=-12.0,
-    press_distance=12.0, press_intensity=0.55,
+    press_distance=6.5, press_intensity=0.55,
     shoot_threshold=14.0, shoot_aim="TL", shoot_power=0.90,
     support_x_factor=0.60, support_y=-12.0, support_sprint=False,
     phase_logic=True, default_stance=0,
-    last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.5},
-    last_resort_duration=3,
+    last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": -12.0, "sprint": False},
+    last_resort_duration=0,
 )
 
 RM_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_PASS",
     default_x_factor=0.60, default_x_ref="opp_goal", default_y=12.0,
-    press_distance=12.0, press_intensity=0.55,
+    press_distance=6.5, press_intensity=0.55,
     shoot_threshold=14.0, shoot_aim="TR", shoot_power=0.90,
     support_x_factor=0.60, support_y=12.0, support_sprint=False,
     phase_logic=True, default_stance=0,
-    last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.5},
-    last_resort_duration=3,
+    last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": 12.0, "sprint": False},
+    last_resort_duration=0,
 )
 
 ST_CONFIG = FallbackConfig(
@@ -195,10 +195,10 @@ ST_CONFIG = FallbackConfig(
     advance_x_factor=0.62, advance_y=0.0, advance_sprint=False,   # middle of box: no sprint
     support_x_factor=0.62, support_y=0.0, support_sprint=False,
     default_x_factor=0.62, default_x_ref="opp_goal", default_y=0.0,
-    press_distance=14.0, press_intensity=0.6,
+    press_distance=6.5, press_intensity=0.6,
     phase_logic=True, default_stance=0,
     last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": 0, "sprint": False},
-    last_resort_duration=3,
+    last_resort_duration=0,
 )
 
 

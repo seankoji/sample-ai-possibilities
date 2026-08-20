@@ -342,8 +342,35 @@ def fast_path_decision(
                         "duration": 0
                     }]
 
-    # No fast path applies - use LLM for complex decision
-    return None
+    # Fast path 7: Off-ball defensive covering when opponent has ball (prevents fallback PRESS spam)
+    if possession_id is not None and not we_have_ball:
+        if position_label in ("LM", "RM"):
+            flank_y = -12.0 if position_label == "LM" else 12.0
+            def_x = ball_pos.get("x", 0) * 0.35 if ((ball_pos.get("x", 0) < 0) if team_id == 0 else (ball_pos.get("x", 0) > 0)) else 0.0
+            return [{
+                "commandType": "MOVE_TO",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "target_x": def_x,
+                    "target_y": flank_y,
+                    "sprint": False
+                },
+                "duration": 0
+            }]
+        elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
+            # Striker stays ready in central channel for counter-attack
+            return [{
+                "commandType": "MOVE_TO",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "target_x": opp_goal_x * 0.20,
+                    "target_y": 0.0,
+                    "sprint": False
+                },
+                "duration": 0
+            }]
 
 
 def _fast_path_with_ball(
@@ -662,46 +689,40 @@ def _fast_path_with_ball(
                 "duration": 0
             }]
     
-    # Unpressured advance / through-ball transition
-    if not is_pressured_or_marked:
-        if position_label in ("ST", "FWD", "FWD1", "FWD2"):
-            # Move to middle of the box / central "D"
+    # Unpressured advance / passing sequence: If teammates available, play rapid 1-2 pass to sustain possession chains
+    outfield = [p for p in my_team if _player_idx(p) != my_player_id and _player_idx(p) != 0]
+    if outfield:
+        # Prioritize forward pass to ST or open opposite winger
+        forward_targets = [p for p in outfield if abs(p.get("position", {}).get("x", 0) - opp_goal_x) <= abs(my_pos.get("x", 0) - opp_goal_x) + 4.0]
+        unblocked = [p for p in forward_targets if not is_lane_blocked(my_pos, p.get("position", {}), opponents, clearance=1.8)]
+        if unblocked:
+            best = min(unblocked, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+            d = dist(best.get("position", {}), my_pos)
+            pass_t = "THROUGH" if d > 16.0 else "GROUND"
             return [{
-                "commandType": "MOVE_TO",
+                "commandType": "PASS",
                 "playerId": my_player_id,
                 "teamId": team_id,
-                "parameters": {
-                    "target_x": opp_goal_x * 0.65,
-                    "target_y": 0.0,
-                    "sprint": can_sprint
-                },
+                "parameters": {"target_player_id": _player_idx(best), "type": pass_t},
                 "duration": 0
             }]
-        elif position_label in ("LM", "RM", "MID"):
-            st = next((p for p in my_team if _player_idx(p) in (3, 4) and _player_idx(p) != my_player_id), None)
-            if st and not is_lane_blocked(my_pos, st.get("position", {}), opponents, clearance=2.0):
-                st_dist = dist(my_pos, st.get("position", {}))
-                return [{
-                    "commandType": "PASS",
-                    "playerId": my_player_id,
-                    "teamId": team_id,
-                    "parameters": {
-                        "target_player_id": _player_idx(st),
-                        "type": "THROUGH" if st_dist > 15.0 else "GROUND"
-                    },
-                    "duration": 0
-                }]
-            flank_y = -13.0 if (position_label == "LM" or my_pos.get("y", 0) < 0) else 13.0
-            return [{
-                "commandType": "MOVE_TO",
-                "playerId": my_player_id,
-                "teamId": team_id,
-                "parameters": {
-                    "target_x": opp_goal_x * 0.55,
-                    "target_y": flank_y,
-                    "sprint": can_sprint
-                },
-                "duration": 0
-            }]
+
+    if position_label in ("ST", "FWD", "FWD1", "FWD2"):
+        return [{
+            "commandType": "MOVE_TO",
+            "playerId": my_player_id,
+            "teamId": team_id,
+            "parameters": {"target_x": opp_goal_x * 0.65, "target_y": 0.0, "sprint": can_sprint},
+            "duration": 0
+        }]
+    elif position_label in ("LM", "RM", "MID"):
+        flank_y = -12.0 if (position_label == "LM" or my_pos.get("y", 0) < 0) else 12.0
+        return [{
+            "commandType": "MOVE_TO",
+            "playerId": my_player_id,
+            "teamId": team_id,
+            "parameters": {"target_x": opp_goal_x * 0.60, "target_y": flank_y, "sprint": can_sprint},
+            "duration": 0
+        }]
 
     return None
