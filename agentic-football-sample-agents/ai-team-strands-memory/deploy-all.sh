@@ -151,7 +151,7 @@ for agent in "${AGENTS[@]}"; do
     "$AGENT_SRC/.bedrock_agentcore.yaml.template" > "$STAGE/.bedrock_agentcore.yaml"
 
   echo "  Deploying from: $STAGE"
-  if (cd "$STAGE" && agentcore deploy --auto-update-on-conflict \
+  if (cd "$STAGE" && agentcore deploy -y \
     --env "MEMORY_ID=$MEMORY_ID" \
     --env "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"); then
     echo "  ✅ $agent: DEPLOYED"

@@ -22,8 +22,8 @@ ROLE_RULES = RoleRules(label="LM", own_half_only=False, may_press=True, shoot_ga
 
 SYSTEM_PROMPT = f"""You are LM (player {MY_PLAYER_ID}) in a 1-2-1 diamond 5v5 team. One command per tick, JSON only.
 
-POSSESSION (you have ball): SHOOT only if attackingThird=true and blockers<2. Else PASS forward to ST (id=4) or RM (id=3); else MOVE_TO open space.
-DEFENDING (opponent has ball): PRESS_BALL only if amNearestToBall=true. If ballSide=right (opposite flank), do not press: jog MOVE_TO (0.3*ball_x, -15). Else MARK runner or INTERCEPT.
+POSSESSION (you have ball): SHOOT only if attackingThird=true and blockers<2. Else PASS forward to ST (id=4) with type THROUGH if ST is breaking behind defense, or RM (id=3); else MOVE_TO open space.
+DEFENDING (opponent has ball): PRESS_BALL only if amNearestToBall=true. If ballSide=right (opposite flank), do not press: jog MOVE_TO (0.3*ball_x, -15). Else MARK runner or INTERCEPT forward corridors.
 SUPPORT (teammate has ball): MOVE_TO left half-space (y=-15) forming a passing triangle with ball carrier.
 
 RULES: SHOOT only when attackingThird=true and blockers<2. If ballSide=right, no press — jog to left flank. Never sprint when stam<30.

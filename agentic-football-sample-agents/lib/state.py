@@ -143,6 +143,66 @@ def ball_side(ball_y: float) -> str:
     return "center"
 
 
+def get_score_diff(game_state: dict, team_id: int) -> int:
+    """Return score_diff = my_score - opp_score."""
+    score = game_state.get("score", {})
+    if not isinstance(score, dict):
+        return 0
+    if team_id == 0:
+        my_s = score.get("home", score.get("team0", score.get(0, score.get("0", 0))))
+        opp_s = score.get("away", score.get("team1", score.get(1, score.get("1", 0))))
+    else:
+        my_s = score.get("away", score.get("team1", score.get(1, score.get("1", 0))))
+        opp_s = score.get("home", score.get("team0", score.get(0, score.get("0", 0))))
+    try:
+        return int(my_s or 0) - int(opp_s or 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+def point_to_segment_dist(px: float, py: float, x1: float, y1: float, x2: float, y2: float) -> float:
+    """Euclidean distance from point (px, py) to line segment (x1, y1)-(x2, y2)."""
+    dx = x2 - x1
+    dy = y2 - y1
+    l2 = dx * dx + dy * dy
+    if l2 == 0.0:
+        return math.hypot(px - x1, py - y1)
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / l2))
+    proj_x = x1 + t * dx
+    proj_y = y1 + t * dy
+    return math.hypot(px - proj_x, py - proj_y)
+
+
+def is_lane_blocked(
+    p_from: dict | tuple[float, float],
+    p_to: dict | tuple[float, float],
+    opponents: list[dict],
+    clearance: float = 2.5,
+) -> bool:
+    """True if any opponent is within clearance distance of the line segment from p_from to p_to."""
+    x1 = p_from.get("x", 0.0) if isinstance(p_from, dict) else p_from[0]
+    y1 = p_from.get("y", 0.0) if isinstance(p_from, dict) else p_from[1]
+    x2 = p_to.get("x", 0.0) if isinstance(p_to, dict) else p_to[0]
+    y2 = p_to.get("y", 0.0) if isinstance(p_to, dict) else p_to[1]
+
+    for opp in opponents:
+        pos = opp.get("position", opp) if isinstance(opp, dict) else opp
+        ox = pos.get("x", 0.0) if isinstance(pos, dict) else pos[0]
+        oy = pos.get("y", 0.0) if isinstance(pos, dict) else pos[1]
+        if point_to_segment_dist(ox, oy, x1, y1, x2, y2) < clearance:
+            return True
+    return False
+
+
+def get_far_post_aim(opp_gk_y: float, prefer_top: bool = True) -> str:
+    """Compute far-post shot corner given opponent GK y position.
+    If opp GK on left (y < 0) -> aim right ("TR" / "BR").
+    If opp GK on right (y >= 0) -> aim left ("TL" / "BL")."""
+    if opp_gk_y < 0:
+        return "TR" if prefer_top else "BR"
+    return "TL" if prefer_top else "BL"
+
+
 def summarize_state(
     game_state: dict,
     team_id: int,
@@ -231,6 +291,7 @@ def summarize_state(
         am_nearest = is_nearest_to_ball(pos, my_player_id, my_team, ball_pos)
         att_third = is_attacking_third(pos.get("x", 0), team_id)
         bside = ball_side(ball_pos.get("y", 0))
+        score_diff = get_score_diff(game_state, team_id)
         lines.append("")
         lines.append(
             f">>> YOU ({position_label}, id={my_player_id}): "
@@ -239,7 +300,8 @@ def summarize_state(
             f"goalVec=({goal_vec_x:.1f},{goal_vec_y:.1f}) "
             f"nearestOpp={nearest_opp_dist:.1f} blockers={blockers} "
             f"amNearestToBall={str(am_nearest).lower()} "
-            f"attackingThird={str(att_third).lower()} ballSide={bside}"
+            f"attackingThird={str(att_third).lower()} ballSide={bside} "
+            f"scoreDiff={score_diff:+d} gameTime={game_time:.0f}s"
         )
 
     return "\n".join(lines)

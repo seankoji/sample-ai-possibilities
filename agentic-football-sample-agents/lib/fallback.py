@@ -8,7 +8,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from state import get_goal_positions, get_possession_info, dist, _player_idx, _is_my_team, _possession_idx
+from state import (
+    get_goal_positions,
+    get_possession_info,
+    dist,
+    _player_idx,
+    _is_my_team,
+    _possession_idx,
+    get_score_diff,
+    is_lane_blocked,
+    get_far_post_aim,
+)
 
 
 @dataclass
@@ -222,6 +232,18 @@ def build_fallback(cfg: FallbackConfig) -> Callable[[dict, int, int], list[dict]
 
         pos = me.get("position", {"x": 0, "y": 0})
 
+        game_time = float(game_state.get("gameTime", 0) or 0)
+        score_diff = get_score_diff(game_state, team_id)
+        is_chasing = (score_diff < 0 and game_time > 150.0)
+        is_defending_lead = (score_diff >= 2)
+
+        press_dist = cfg.press_distance * 1.3 if is_chasing else cfg.press_distance
+        press_intensity = min(1.0, max(cfg.press_intensity, 0.9)) if is_chasing else (
+            min(cfg.press_intensity, 0.6) if is_defending_lead else cfg.press_intensity
+        )
+        support_sprint = False if is_defending_lead else cfg.support_sprint
+        mark_tightness = "TIGHT" if is_defending_lead else cfg.mark_tightness
+
         if cfg.phase_logic:
             # 1. I have the ball
             if possession_id == my_player_id:
@@ -233,23 +255,41 @@ def build_fallback(cfg: FallbackConfig) -> Callable[[dict, int, int], list[dict]
             if we_have_ball:
                 return [_cmd("MOVE_TO", my_player_id, team_id,
                              {"target_x": opp_goal_x * cfg.support_x_factor,
-                              "target_y": cfg.support_y, "sprint": cfg.support_sprint})]
+                              "target_y": cfg.support_y, "sprint": support_sprint})]
 
             # 3. Opponent has ball / loose ball
             from state import is_nearest_to_ball
             my_team = [p for p in players if _is_my_team(p, team_id)]
-            if is_nearest_to_ball(pos, my_player_id, my_team, ball_pos) and dist(pos, ball_pos) < cfg.press_distance:
+            opponents = [p for p in players if not _is_my_team(p, team_id)]
+            if is_nearest_to_ball(pos, my_player_id, my_team, ball_pos) and dist(pos, ball_pos) < press_dist:
                 return [_cmd("PRESS_BALL", my_player_id, team_id,
-                             {"intensity": cfg.press_intensity}, duration=cfg.press_duration)]
+                             {"intensity": press_intensity}, duration=cfg.press_duration)]
 
             if cfg.mark_threshold > 0:
-                opponents = [p for p in players if not _is_my_team(p, team_id)]
                 if opponents:
                     dangerous = min(opponents, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
                     if abs(dangerous.get("position", {}).get("x", 0) - my_goal_x) < cfg.mark_threshold:
                         return [_cmd("MARK", my_player_id, team_id,
                                      {"target_player_id": _player_idx(dangerous),
-                                      "tightness": cfg.mark_tightness}, duration=3)]
+                                      "tightness": mark_tightness}, duration=3)]
+
+            # Corridor interception for off-ball midfielders/defenders when opponent is setting up a pass
+            if possession_id is not None:
+                opp_carrier = next((p for p in opponents if _player_idx(p) == possession_id), None)
+                if opp_carrier:
+                    fwd_opps = [
+                        p for p in opponents
+                        if _player_idx(p) != 0 and abs(p.get("position", {}).get("x", 0) - my_goal_x) < abs(opp_carrier.get("position", {}).get("x", 0) - my_goal_x) - 2.0
+                    ]
+                    if fwd_opps:
+                        target_receiver = min(fwd_opps, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
+                        c_pos = opp_carrier.get("position", {})
+                        r_pos = target_receiver.get("position", {})
+                        corridor_x = (c_pos.get("x", 0) + r_pos.get("x", 0)) * 0.5
+                        corridor_y = (c_pos.get("y", 0) + r_pos.get("y", 0)) * 0.5
+                        if dist(pos, {"x": corridor_x, "y": corridor_y}) < 20.0:
+                            return [_cmd("MOVE_TO", my_player_id, team_id,
+                                         {"target_x": corridor_x, "target_y": corridor_y, "sprint": False})]
 
             # Default position
             tx, ty = _default_pos(cfg, my_goal_x, opp_goal_x, ball_pos)
@@ -270,7 +310,7 @@ def build_fallback(cfg: FallbackConfig) -> Callable[[dict, int, int], list[dict]
                 if abs(dangerous.get("position", {}).get("x", 0) - my_goal_x) < cfg.mark_threshold:
                     return [_cmd("MARK", my_player_id, team_id,
                                  {"target_player_id": _player_idx(dangerous),
-                                  "tightness": cfg.mark_tightness}, duration=3)]
+                                  "tightness": mark_tightness}, duration=3)]
 
         # --- Teammate has ball → support run (forwards) ---
         if cfg.possession_action in ("SHOOT_OR_ADVANCE",):
@@ -278,13 +318,13 @@ def build_fallback(cfg: FallbackConfig) -> Callable[[dict, int, int], list[dict]
             if we_have_ball:
                 return [_cmd("MOVE_TO", my_player_id, team_id,
                              {"target_x": opp_goal_x * cfg.support_x_factor,
-                              "target_y": cfg.support_y, "sprint": cfg.support_sprint})]
+                              "target_y": cfg.support_y, "sprint": support_sprint})]
 
         # --- Press if close to ball and opponent has it ---
         _, _, we_have_ball = get_possession_info(ball, players, team_id)
-        if not we_have_ball and dist(pos, ball_pos) < cfg.press_distance:
+        if not we_have_ball and dist(pos, ball_pos) < press_dist:
             return [_cmd("PRESS_BALL", my_player_id, team_id,
-                         {"intensity": cfg.press_intensity}, duration=cfg.press_duration)]
+                         {"intensity": press_intensity}, duration=cfg.press_duration)]
 
         # --- Default position ---
         tx, ty = _default_pos(cfg, my_goal_x, opp_goal_x, ball_pos)
@@ -305,6 +345,10 @@ def _cmd(cmd_type: str, pid: int, tid: int, params: dict, duration: int = 0) -> 
 
 def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, opp_goal_x):
     """Handle possession for all position types."""
+    opponents = [p for p in players if not _is_my_team(p, team_id)]
+    opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+    shoot_aim = get_far_post_aim(opp_gk.get("position", {}).get("y", 0.0), prefer_top=("T" in cfg.shoot_aim)) if opp_gk else cfg.shoot_aim
+
     if cfg.possession_action == "GK_DISTRIBUTE":
         if cfg.distribute_wide_ids:
             wide_teammates = [
@@ -312,7 +356,16 @@ def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, op
                 if _is_my_team(p, team_id) and _player_idx(p) in cfg.distribute_wide_ids and _player_idx(p) != my_player_id
             ]
             if wide_teammates:
-                target = min(wide_teammates, key=lambda p: dist(p.get("position", {}), pos))
+                unblocked = [
+                    p for p in wide_teammates
+                    if not is_lane_blocked(pos, p.get("position", {}), opponents, clearance=2.5)
+                ]
+                pool = unblocked if unblocked else wide_teammates
+                def _openness(p):
+                    p_pos = p.get("position", {})
+                    d_opp = min([dist(p_pos, opp.get("position", {})) for opp in opponents], default=99.0)
+                    return (d_opp, abs(p_pos.get("y", 0)))
+                target = max(pool, key=_openness)
                 return [_cmd("GK_DISTRIBUTE", my_player_id, team_id,
                              {"target_player_id": _player_idx(target), "method": "THROW"})]
         teammates = [p for p in players if _is_my_team(p, team_id) and _player_idx(p) != my_player_id]
@@ -325,7 +378,6 @@ def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, op
 
     if cfg.clear_when_pressured:
         in_own_third = (pos.get("x", 0) < -55.0 / 3.0) if team_id == 0 else (pos.get("x", 0) > 55.0 / 3.0)
-        opponents = [p for p in players if not _is_my_team(p, team_id)]
         pressured = any(dist(p.get("position", {}), pos) < 5.0 for p in opponents)
         if in_own_third and pressured:
             wide_targets = [
@@ -342,32 +394,57 @@ def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, op
                 return [_cmd("PASS", my_player_id, team_id,
                              {"target_player_id": _player_idx(target), "type": "AERIAL"})]
 
+    # THROUGH pass check: when opponents have >= 3 outfield players ahead of the ball and ST is behind last line
+    outfield_opps = [p for p in opponents if _player_idx(p) != 0]
+    opps_ahead = [
+        p for p in outfield_opps
+        if abs(p.get("position", {}).get("x", 0) - opp_goal_x) > abs(pos.get("x", 0) - opp_goal_x)
+    ]
+    st = next((p for p in players if _is_my_team(p, team_id) and _player_idx(p) == 4), None)
+    if st and len(opps_ahead) >= 3 and my_player_id != 4:
+        min_opp_dist = min([abs(p.get("position", {}).get("x", 0) - opp_goal_x) for p in outfield_opps], default=99.0)
+        st_dist = abs(st.get("position", {}).get("x", 0) - opp_goal_x)
+        if st_dist <= min_opp_dist + 3.0:
+            return [_cmd("PASS", my_player_id, team_id, {"target_player_id": 4, "type": "THROUGH"})]
+
     if cfg.possession_action == "PASS":
         exclude = set(cfg.pass_exclude_ids) | {my_player_id}
         teammates = [p for p in players if _is_my_team(p, team_id) and _player_idx(p) not in exclude]
         if teammates:
-            target = min(teammates, key=lambda p: dist(p.get("position", {}), pos))
+            unblocked = [
+                p for p in teammates
+                if not is_lane_blocked(pos, p.get("position", {}), opponents, clearance=2.5)
+            ]
+            pool = unblocked if unblocked else teammates
+            target = min(pool, key=lambda p: dist(p.get("position", {}), pos))
+            pass_t = "GROUND" if unblocked else "AERIAL"
             return [_cmd("PASS", my_player_id, team_id,
-                         {"target_player_id": _player_idx(target), "type": "GROUND"})]
+                         {"target_player_id": _player_idx(target), "type": pass_t})]
         return [_cmd("PASS", my_player_id, team_id,
                      {"target_player_id": 2, "type": "GROUND"})]
 
     if cfg.possession_action == "SHOOT_OR_PASS":
         if abs(pos.get("x", 0) - opp_goal_x) < cfg.shoot_threshold:
             return [_cmd("SHOOT", my_player_id, team_id,
-                         {"aim_location": cfg.shoot_aim, "power": cfg.shoot_power})]
+                         {"aim_location": shoot_aim, "power": cfg.shoot_power})]
         forwards = [p for p in players if _is_my_team(p, team_id) and _player_idx(p) in (3, 4)]
         if forwards:
-            target = min(forwards, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+            unblocked = [
+                p for p in forwards
+                if not is_lane_blocked(pos, p.get("position", {}), opponents, clearance=2.5)
+            ]
+            pool = unblocked if unblocked else forwards
+            target = min(pool, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+            pass_t = "GROUND" if unblocked else "AERIAL"
             return [_cmd("PASS", my_player_id, team_id,
-                         {"target_player_id": _player_idx(target), "type": "GROUND"})]
+                         {"target_player_id": _player_idx(target), "type": pass_t})]
         return [_cmd("PASS", my_player_id, team_id,
                      {"target_player_id": 3, "type": "GROUND"})]
 
     if cfg.possession_action == "SHOOT_OR_ADVANCE":
         if abs(pos.get("x", 0) - opp_goal_x) < cfg.shoot_threshold:
             return [_cmd("SHOOT", my_player_id, team_id,
-                         {"aim_location": cfg.shoot_aim, "power": cfg.shoot_power})]
+                         {"aim_location": shoot_aim, "power": cfg.shoot_power})]
         return [_cmd("MOVE_TO", my_player_id, team_id,
                      {"target_x": opp_goal_x * cfg.advance_x_factor,
                       "target_y": cfg.advance_y, "sprint": cfg.advance_sprint})]

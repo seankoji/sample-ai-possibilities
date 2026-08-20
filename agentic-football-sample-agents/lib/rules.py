@@ -13,6 +13,9 @@ from state import (
     is_attacking_third,
     shot_blockers,
     ball_side,
+    get_score_diff,
+    is_lane_blocked,
+    get_far_post_aim,
 )
 
 
@@ -131,6 +134,11 @@ def sanitize_commands(
     stam = stam_raw * 100 if stam_raw <= 1.0 else stam_raw
     low_stamina = stam < 30
 
+    game_time = float(game_state.get("gameTime", 0) or 0)
+    score_diff = get_score_diff(game_state, team_id)
+    is_chasing = (score_diff < 0 and game_time > 150.0)
+    is_defending_lead = (score_diff >= 2)
+
     sanitized: list[dict] = []
 
     for cmd in commands:
@@ -142,7 +150,7 @@ def sanitize_commands(
         params = dict(cmd.get("parameters", {}))
         duration = cmd.get("duration", 0)
 
-        # Rule 2: Anti-swarm
+        # Rule 2: Anti-swarm & pressing
         if cmd_type in ("PRESS_BALL", "SLIDE_TACKLE"):
             if not rules.may_press or not is_nearest_to_ball(
                 my_pos, my_player_id, my_team, ball_pos
@@ -186,50 +194,140 @@ def sanitize_commands(
                     cmd_type = "MOVE_TO"
                     params = {"target_x": home_x, "target_y": home_y, "sprint": False}
                     duration = 0
+            else:
+                # Nearest player allowed to press — elevate intensity if chasing deficit
+                if is_chasing and cmd_type == "PRESS_BALL":
+                    params["intensity"] = min(1.0, max(float(params.get("intensity", 0.7)), 0.9))
 
-        # Rule 3: Shot discipline
-        if cmd_type == "SHOOT" and rules.shoot_gate:
-            in_att_third = is_attacking_third(my_pos.get("x", 0), team_id)
-            blockers = shot_blockers(my_pos, opp_goal_x, opponents)
-            if not (in_att_third and blockers < rules.max_shot_blockers):
-                outfield_teammates = [
-                    p
-                    for p in my_team
-                    if _player_idx(p) != my_player_id and _player_idx(p) != 0
-                ]
-                if outfield_teammates:
-                    best_tm = min(
-                        outfield_teammates,
-                        key=lambda p: abs(
-                            p.get("position", {}).get("x", 0) - opp_goal_x
-                        ),
-                    )
-                    cmd_type = "PASS"
-                    params = {
-                        "target_player_id": _player_idx(best_tm),
-                        "type": "GROUND",
-                    }
-                    duration = 0
-                else:
-                    continue
+        # Rule 3: Shot discipline & Dynamic Far-Post Aiming
+        if cmd_type == "SHOOT":
+            # Dynamic far-post corner relative to opponent GK
+            opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+            if opp_gk:
+                opp_gk_y = opp_gk.get("position", {}).get("y", 0.0)
+                current_aim = params.get("aim_location", "CENTER")
+                prefer_top = ("T" in current_aim or current_aim == "CENTER")
+                params["aim_location"] = get_far_post_aim(opp_gk_y, prefer_top=prefer_top)
 
-        # GK possession enforcement: GK with ball must GK_DISTRIBUTE
+            if rules.shoot_gate:
+                in_att_third = is_attacking_third(my_pos.get("x", 0), team_id)
+                dist_opp_goal = abs(my_pos.get("x", 0) - opp_goal_x)
+                blockers = shot_blockers(my_pos, opp_goal_x, opponents)
+                effective_max_blockers = rules.max_shot_blockers
+                # Relax blocker threshold when chasing deficit or within 20m of goal (allow 2 blockers)
+                if is_chasing or dist_opp_goal < 20.0:
+                    effective_max_blockers = max(effective_max_blockers, 3)
+
+                allowed_to_shoot = (in_att_third or dist_opp_goal < 20.0) and (blockers < effective_max_blockers)
+                if not allowed_to_shoot:
+                    outfield_teammates = [
+                        p
+                        for p in my_team
+                        if _player_idx(p) != my_player_id and _player_idx(p) != 0
+                    ]
+                    if outfield_teammates:
+                        unblocked = [
+                            p for p in outfield_teammates
+                            if not is_lane_blocked(my_pos, p.get("position", {}), opponents, clearance=2.5)
+                        ]
+                        candidate_list = unblocked if unblocked else outfield_teammates
+                        best_tm = min(
+                            candidate_list,
+                            key=lambda p: abs(
+                                p.get("position", {}).get("x", 0) - opp_goal_x
+                            ),
+                        )
+                        cmd_type = "PASS"
+                        pass_t = "GROUND" if unblocked else "AERIAL"
+                        params = {
+                            "target_player_id": _player_idx(best_tm),
+                            "type": pass_t,
+                        }
+                        duration = 0
+                    else:
+                        continue
+
+        # Passing lane clearance & re-routing
+        if cmd_type == "PASS":
+            target_pid = params.get("target_player_id")
+            target_tm = next((p for p in my_team if _player_idx(p) == target_pid), None)
+            pass_type = params.get("type", "GROUND")
+            if target_tm and pass_type in ("GROUND", "THROUGH"):
+                target_pos = target_tm.get("position", {})
+                if is_lane_blocked(my_pos, target_pos, opponents, clearance=2.5):
+                    alt_teammates = [
+                        p for p in my_team
+                        if _player_idx(p) not in (0, my_player_id, target_pid)
+                    ]
+                    unblocked_alts = [
+                        p for p in alt_teammates
+                        if not is_lane_blocked(my_pos, p.get("position", {}), opponents, clearance=2.5)
+                    ]
+                    if unblocked_alts:
+                        best_alt = min(
+                            unblocked_alts,
+                            key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x),
+                        )
+                        params["target_player_id"] = _player_idx(best_alt)
+                    else:
+                        params["type"] = "AERIAL"
+
+        # GK possession enforcement: GK with ball must GK_DISTRIBUTE to wider/open wing player (IDs 2 vs 3)
         if rules.box_only or my_player_id == 0:
             poss_id, _, _ = get_possession_info(ball, players, team_id)
-            if poss_id == my_player_id and cmd_type != "GK_DISTRIBUTE":
-                cmd_type = "GK_DISTRIBUTE"
-                params = {"target_player_id": 1, "method": "THROW"}
-                duration = 0
+            if poss_id == my_player_id:
+                if cmd_type != "GK_DISTRIBUTE":
+                    cmd_type = "GK_DISTRIBUTE"
+                    params = {"method": params.get("method", "THROW")}
+                    duration = 0
+                target_pid = params.get("target_player_id")
+                # When target is not a valid open wing player (2 or 3)
+                p2 = next((p for p in my_team if _player_idx(p) == 2), None)
+                p3 = next((p for p in my_team if _player_idx(p) == 3), None)
+                if p2 and p3:
+                    p2_pos = p2.get("position", {})
+                    p3_pos = p3.get("position", {})
+                    p2_opp_dist = min([dist(p2_pos, opp.get("position", {})) for opp in opponents], default=99.0)
+                    p3_opp_dist = min([dist(p3_pos, opp.get("position", {})) for opp in opponents], default=99.0)
+                    p2_lane_blocked = is_lane_blocked(my_pos, p2_pos, opponents, clearance=2.5)
+                    p3_lane_blocked = is_lane_blocked(my_pos, p3_pos, opponents, clearance=2.5)
+
+                    if p2_lane_blocked and not p3_lane_blocked:
+                        chosen_id = 3
+                    elif p3_lane_blocked and not p2_lane_blocked:
+                        chosen_id = 2
+                    elif p2_opp_dist > p3_opp_dist + 2.0:
+                        chosen_id = 2
+                    elif p3_opp_dist > p2_opp_dist + 2.0:
+                        chosen_id = 3
+                    else:
+                        chosen_id = 2 if abs(p2_pos.get("y", 0)) >= abs(p3_pos.get("y", 0)) else 3
+                elif p2:
+                    chosen_id = 2
+                elif p3:
+                    chosen_id = 3
+                else:
+                    outfield = [p for p in my_team if _player_idx(p) not in (0, my_player_id)]
+                    chosen_id = _player_idx(outfield[0]) if outfield else 1
+                params["target_player_id"] = chosen_id
 
         # Rule 4: Role boundaries
         if cmd_type == "MOVE_TO":
             tx = float(params.get("target_x", 0.0))
             ty = float(params.get("target_y", 0.0))
             if rules.own_half_only:
-                if team_id == 0:
-                    tx = min(tx, 0.0)
+                if is_chasing:
+                    # Relax CB boundary when chasing deficit in second half
+                    max_adv = opp_goal_x * 0.4
+                    if team_id == 0:
+                        tx = max(-55.0, min(max_adv, tx))
+                    else:
+                        tx = min(55.0, max(max_adv, tx))
                 else:
-                    tx = max(tx, 0.0)
+                    if team_id == 0:
+                        tx = min(tx, 0.0)
+                    else:
+                        tx = max(tx, 0.0)
             if rules.box_only:
                 if team_id == 0:
                     tx = max(-55.0, min(-40.0, tx))
@@ -239,12 +337,15 @@ def sanitize_commands(
             params["target_x"] = tx
             params["target_y"] = ty
 
-        # Rule 5: Stamina & opposite-flank checks
-        if low_stamina:
+        # Rule 5: Stamina & opposite-flank & defending lead checks
+        if low_stamina or is_defending_lead:
             if cmd_type == "MOVE_TO":
                 params["sprint"] = False
-            elif cmd_type == "PRESS_BALL":
+            elif low_stamina and cmd_type == "PRESS_BALL":
                 continue
+
+        if is_defending_lead and cmd_type == "MARK":
+            params["tightness"] = "TIGHT"
 
         if rules.home_y is not None and cmd_type == "PRESS_BALL":
             bside = ball_side(ball_pos.get("y", 0))

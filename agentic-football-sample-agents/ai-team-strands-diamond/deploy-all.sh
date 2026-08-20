@@ -143,7 +143,7 @@ for agent in "${AGENTS[@]}"; do
 
   # Deploy from staging directory
   echo "  Deploying from: $STAGE"
-  if (cd "$STAGE" && agentcore deploy --auto-update-on-conflict); then
+  if (cd "$STAGE" && agentcore deploy -y); then
     echo "  ✅ $agent: DEPLOYED"
     DEPLOYED+=("$agent")
   else

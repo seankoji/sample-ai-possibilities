@@ -272,7 +272,7 @@ for agent in "${AGENTS[@]}"; do
   REAL_PYTHON=$(python3 -c "import os,sys; print(os.path.realpath(sys.executable))")
   export UV_PYTHON="$REAL_PYTHON"
   export UV_PYTHON_PREFERENCE="only-system"
-  if (cd "$STAGE" && agentcore deploy --auto-update-on-conflict \
+  if (cd "$STAGE" && agentcore deploy -y \
     --env "GATEWAY_URL=$GATEWAY_URL" \
     --env "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"); then
     echo "  ✅ $agent: DEPLOYED"
