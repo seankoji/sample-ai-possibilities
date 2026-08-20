@@ -18,12 +18,13 @@ from state import (
 
 @dataclass
 class RoleRules:
-    label: str                      # "GK" | "CB" | "LM" | "RM" | "ST"
-    own_half_only: bool = False     # CB: clamp MOVE_TO targets to own half
-    box_only: bool = False          # GK: clamp MOVE_TO targets to box region (within ~15 of own goal x, |y| <= 20)
+    label: str  # "GK" | "CB" | "LM" | "RM" | "ST"
+    own_half_only: bool = False  # CB: clamp MOVE_TO targets to own half
+    box_only: bool = False  # GK: clamp MOVE_TO targets to box region (within ~15 of own goal x, |y| <= 20)
     may_press: bool = True
-    shoot_gate: bool = True         # require attacking third AND blockers < 2
-    home_y: float | None = None     # LM → -15, RM → +15 (wide home flank)
+    shoot_gate: bool = True  # require attacking third AND blockers < max_shot_blockers
+    max_shot_blockers: int = 2  # shot gate threshold (coaching postures adjust this)
+    home_y: float | None = None  # LM → -15, RM → +15 (wide home flank)
 
 
 def _validate_schema(cmd: dict, my_player_id: int) -> bool:
@@ -48,7 +49,12 @@ def _validate_schema(cmd: dict, my_player_id: int) -> bool:
 
     if cmd_type in ("PASS", "GK_DISTRIBUTE"):
         target = params.get("target_player_id")
-        if not isinstance(target, int) or isinstance(target, bool) or not (0 <= target <= 4) or target == my_player_id:
+        if (
+            not isinstance(target, int)
+            or isinstance(target, bool)
+            or not (0 <= target <= 4)
+            or target == my_player_id
+        ):
             return False
         if cmd_type == "PASS":
             pass_type = params.get("type", "GROUND")
@@ -62,7 +68,12 @@ def _validate_schema(cmd: dict, my_player_id: int) -> bool:
 
     if cmd_type in ("MARK", "FOLLOW_PLAYER", "SLIDE_TACKLE"):
         target = params.get("target_player_id")
-        if not isinstance(target, int) or isinstance(target, bool) or not (0 <= target <= 4) or target == my_player_id:
+        if (
+            not isinstance(target, int)
+            or isinstance(target, bool)
+            or not (0 <= target <= 4)
+            or target == my_player_id
+        ):
             return False
         if cmd_type == "MARK":
             tightness = params.get("tightness", "LOOSE")
@@ -85,7 +96,11 @@ def _validate_schema(cmd: dict, my_player_id: int) -> bool:
 
     if cmd_type == "SET_STANCE":
         stance = params.get("stance")
-        if not isinstance(stance, int) or isinstance(stance, bool) or stance not in {0, 1, 2}:
+        if (
+            not isinstance(stance, int)
+            or isinstance(stance, bool)
+            or stance not in {0, 1, 2}
+        ):
             return False
         return True
 
@@ -129,18 +144,33 @@ def sanitize_commands(
 
         # Rule 2: Anti-swarm
         if cmd_type in ("PRESS_BALL", "SLIDE_TACKLE"):
-            if not rules.may_press or not is_nearest_to_ball(my_pos, my_player_id, my_team, ball_pos):
+            if not rules.may_press or not is_nearest_to_ball(
+                my_pos, my_player_id, my_team, ball_pos
+            ):
                 opps_in_my_half = [
-                    p for p in opponents
-                    if (p.get("position", {}).get("x", 0) <= 0 if team_id == 0 else p.get("position", {}).get("x", 0) >= 0)
+                    p
+                    for p in opponents
+                    if (
+                        p.get("position", {}).get("x", 0) <= 0
+                        if team_id == 0
+                        else p.get("position", {}).get("x", 0) >= 0
+                    )
                 ]
                 if opps_in_my_half:
-                    target_opp = min(opps_in_my_half, key=lambda p: dist(p.get("position", {}), my_pos))
+                    target_opp = min(
+                        opps_in_my_half,
+                        key=lambda p: dist(p.get("position", {}), my_pos),
+                    )
                     opp_x = target_opp.get("position", {}).get("x", 0)
-                    in_own_third = (opp_x < -55.0 / 3.0) if team_id == 0 else (opp_x > 55.0 / 3.0)
+                    in_own_third = (
+                        (opp_x < -55.0 / 3.0) if team_id == 0 else (opp_x > 55.0 / 3.0)
+                    )
                     tightness = "TIGHT" if in_own_third else "LOOSE"
                     cmd_type = "MARK"
-                    params = {"target_player_id": _player_idx(target_opp), "tightness": tightness}
+                    params = {
+                        "target_player_id": _player_idx(target_opp),
+                        "tightness": tightness,
+                    }
                     duration = 3
                 else:
                     # Fallback to MOVE_TO home coordinate
@@ -161,15 +191,24 @@ def sanitize_commands(
         if cmd_type == "SHOOT" and rules.shoot_gate:
             in_att_third = is_attacking_third(my_pos.get("x", 0), team_id)
             blockers = shot_blockers(my_pos, opp_goal_x, opponents)
-            if not (in_att_third and blockers < 2):
+            if not (in_att_third and blockers < rules.max_shot_blockers):
                 outfield_teammates = [
-                    p for p in my_team
+                    p
+                    for p in my_team
                     if _player_idx(p) != my_player_id and _player_idx(p) != 0
                 ]
                 if outfield_teammates:
-                    best_tm = min(outfield_teammates, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+                    best_tm = min(
+                        outfield_teammates,
+                        key=lambda p: abs(
+                            p.get("position", {}).get("x", 0) - opp_goal_x
+                        ),
+                    )
                     cmd_type = "PASS"
-                    params = {"target_player_id": _player_idx(best_tm), "type": "GROUND"}
+                    params = {
+                        "target_player_id": _player_idx(best_tm),
+                        "type": "GROUND",
+                    }
                     duration = 0
                 else:
                     continue
@@ -209,7 +248,9 @@ def sanitize_commands(
 
         if rules.home_y is not None and cmd_type == "PRESS_BALL":
             bside = ball_side(ball_pos.get("y", 0))
-            is_opposite = (rules.home_y < 0 and bside == "right") or (rules.home_y > 0 and bside == "left")
+            is_opposite = (rules.home_y < 0 and bside == "right") or (
+                rules.home_y > 0 and bside == "left"
+            )
             if is_opposite:
                 cmd_type = "MOVE_TO"
                 params = {
@@ -219,12 +260,14 @@ def sanitize_commands(
                 }
                 duration = 0
 
-        sanitized.append({
-            "commandType": cmd_type,
-            "playerId": my_player_id,
-            "teamId": team_id,
-            "parameters": params,
-            "duration": duration,
-        })
+        sanitized.append(
+            {
+                "commandType": cmd_type,
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": params,
+                "duration": duration,
+            }
+        )
 
     return sanitized

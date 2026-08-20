@@ -20,7 +20,9 @@ def create_agent(
 ) -> Agent:
     """Create a Strands Agent with the given system prompt and inference parameters."""
     try:
-        model = BedrockModel(model_id=model_id, max_tokens=max_tokens, temperature=temperature)
+        model = BedrockModel(
+            model_id=model_id, max_tokens=max_tokens, temperature=temperature
+        )
     except TypeError:
         try:
             model = BedrockModel(
@@ -53,6 +55,7 @@ def create_invoke_handler(
 
     @app.entrypoint
     async def invoke(payload, context):
+        effective_rules = role_rules  # always bound for the exception path
         try:
             prompt = payload.get("prompt", "{}")
             prompt_data = json.loads(prompt) if isinstance(prompt, str) else prompt
@@ -64,11 +67,25 @@ def create_invoke_handler(
             my_players = prompt_data.get("myPlayers", [my_player_id])
             effective_pid = my_players[0] if my_players else my_player_id
 
-            state_summary = summarize_state(
-                game_state, team_id, effective_pid, position_label,
-                tactical=(role_rules is not None),
+            # Coaching: extract latest teamChat instruction, classify its posture,
+            # and modulate the rules so coaching isn't vetoed by the sanitizer.
+            from coach import update_coaching
+
+            coach_line, effective_rules = update_coaching(game_state, role_rules)
+
+            state_summary = (
+                summarize_state(
+                    game_state,
+                    team_id,
+                    effective_pid,
+                    position_label,
+                    tactical=(role_rules is not None),
+                )
+                + coach_line
             )
-            log.info(f"{position_label} agent invoked for team {team_id}, controlling player {effective_pid}")
+            log.info(
+                f"{position_label} agent invoked for team {team_id}, controlling player {effective_pid}"
+            )
 
             response = agent(state_summary)
             response_text = str(response)
@@ -77,23 +94,37 @@ def create_invoke_handler(
                 # The model wrote Python-flavoured JSON (usually `True`/`False`/`None`).
                 # We recovered it rather than dropping the command and falling back —
                 # logged so you can see how often your model does this.
-                log.warn(f"{position_label} recovered malformed JSON from the model: {raw[:200]}")
+                log.warn(
+                    f"{position_label} recovered malformed JSON from the model: {raw[:200]}"
+                )
 
-            commands = parse_commands(response_text, team_id, effective_pid, on_recovered)
-            if role_rules is not None and commands:
+            commands = parse_commands(
+                response_text, team_id, effective_pid, on_recovered
+            )
+            if effective_rules is not None and commands:
                 from rules import sanitize_commands
-                commands = sanitize_commands(commands, game_state, team_id, effective_pid, role_rules)
+
+                commands = sanitize_commands(
+                    commands, game_state, team_id, effective_pid, effective_rules
+                )
 
             if commands:
-                log.info(f"LLM returned {len(commands)} commands: "
-                         f"{[c.get('commandType') for c in commands]}")
+                log.info(
+                    f"LLM returned {len(commands)} commands: "
+                    f"{[c.get('commandType') for c in commands]}"
+                )
                 yield json.dumps(commands)
             else:
-                log.warn(f"LLM parse/sanitize failed, using fallback. Response: {response_text[:200]}")
+                log.warn(
+                    f"LLM parse/sanitize failed, using fallback. Response: {response_text[:200]}"
+                )
                 commands = fallback_fn(game_state, team_id, effective_pid)
-                if role_rules is not None and commands:
+                if effective_rules is not None and commands:
                     from rules import sanitize_commands
-                    commands = sanitize_commands(commands, game_state, team_id, effective_pid, role_rules)
+
+                    commands = sanitize_commands(
+                        commands, game_state, team_id, effective_pid, effective_rules
+                    )
                 if not commands:
                     cmd = dict(last_resort)
                     cmd["teamId"] = team_id
@@ -114,9 +145,16 @@ def create_invoke_handler(
                     team_id,
                     effective_pid,
                 )
-                if role_rules is not None and commands:
+                if effective_rules is not None and commands:
                     from rules import sanitize_commands
-                    commands = sanitize_commands(commands, prompt_data.get("gameState", {}), team_id, effective_pid, role_rules)
+
+                    commands = sanitize_commands(
+                        commands,
+                        prompt_data.get("gameState", {}),
+                        team_id,
+                        effective_pid,
+                        effective_rules,
+                    )
                 if not commands:
                     cmd = dict(last_resort)
                     cmd["teamId"] = team_id
@@ -126,7 +164,9 @@ def create_invoke_handler(
             except Exception:
                 cmd = dict(last_resort)
                 cmd["teamId"] = 0  # best guess when payload parsing also failed
-                cmd["playerId"] = effective_pid if "effective_pid" in locals() else my_player_id
+                cmd["playerId"] = (
+                    effective_pid if "effective_pid" in locals() else my_player_id
+                )
                 yield json.dumps([cmd])
 
     return invoke
