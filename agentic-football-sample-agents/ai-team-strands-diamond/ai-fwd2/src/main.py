@@ -47,6 +47,7 @@ POSSESSION (you receive the ball): SHOOT if attackingThird=true AND blockers<2 (
 
 Commands: MOVE_TO(target_x,target_y,sprint) PASS(target_player_id,type:GROUND|AERIAL|THROUGH) SHOOT(aim_location:TL|TR|BL|BR|CENTER,power:0-1)
 Field: x in [-55,55], y in [-35,35]. Team 0 attacks +x, team 1 attacks -x.
+DO NOT explain. DO NOT reason. Output ONLY the JSON array.
 Reply ONLY: [{{"commandType":"...","playerId":{MY_PLAYER_ID},"parameters":{{...}},"duration":0}}]"""
 
 
@@ -57,7 +58,7 @@ fallback_commands = build_fallback(ST_CONFIG)
 
 # --- Wire it up ---
 
-agent = create_agent(SYSTEM_PROMPT, model_id="us.anthropic.claude-sonnet-4-20250514-v1:0", max_tokens=80, temperature=0.1)
+agent = create_agent(SYSTEM_PROMPT, model_id="us.anthropic.claude-sonnet-4-20250514-v1:0", max_tokens=150, temperature=0.1)
 create_invoke_handler(
     app, agent, MY_PLAYER_ID, POSITION_LABEL, fallback_commands,
     fallback_cfg=ST_CONFIG, role_rules=ROLE_RULES,

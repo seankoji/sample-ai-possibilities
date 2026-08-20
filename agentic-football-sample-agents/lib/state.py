@@ -298,14 +298,16 @@ def summarize_state(
     if me:
         pos = me.get("position", {})
         stam_raw = me.get("stamina", 100)
+        # Normalize: engine uses 0.0-1.0 scale, but LLM needs percentage (0-100)
         stam = stam_raw * 100 if stam_raw <= 1.0 else stam_raw
+        stam_display = f"{stam:.0f}%"
         dist_ball = dist(pos, ball_pos)
         has_ball = possession_id == my_player_id
         extra = f" distOppGoal={abs(pos.get('x', 0) - opp_goal_x):.1f}" if position_label in ("MID", "FWD1", "FWD2") else ""
         lines.append(
             f">>> YOUR PLAYER ({position_label}, id={my_player_id}): "
             f"pos=({pos.get('x',0):.1f},{pos.get('y',0):.1f}) "
-            f"stam={stam:.0f} distBall={dist_ball:.1f}{extra} hasBall={has_ball}"
+            f"stam={stam_display} distBall={dist_ball:.1f}{extra} hasBall={has_ball}"
         )
     lines.append("")
 
@@ -338,6 +340,7 @@ def summarize_state(
         pos = me.get("position", {})
         stam_raw = me.get("stamina", 100)
         stam_val = stam_raw * 100 if stam_raw <= 1.0 else stam_raw
+        stam_display = f"{stam_val:.0f}%"
         dist_ball = dist(pos, ball_pos)
         goal_vec_x = opp_goal_x - pos.get("x", 0)
         goal_vec_y = 0.0 - pos.get("y", 0)
@@ -351,7 +354,7 @@ def summarize_state(
         lines.append(
             f">>> YOU ({position_label}, id={my_player_id}): "
             f"pos=({pos.get('x',0):.1f},{pos.get('y',0):.1f}) "
-            f"stam={stam_val:.0f} distBall={dist_ball:.1f} "
+            f"stam={stam_display} distBall={dist_ball:.1f} "
             f"goalVec=({goal_vec_x:.1f},{goal_vec_y:.1f}) "
             f"nearestOpp={nearest_opp_dist:.1f} blockers={blockers} "
             f"amNearestToBall={str(am_nearest).lower()} "

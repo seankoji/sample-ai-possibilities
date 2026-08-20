@@ -102,7 +102,30 @@ def normalise_json_text(text: str) -> str:
 
         out.append(ch)
         i += 1
-    return "".join(out)
+    res = "".join(out)
+    # Evaluate arithmetic expressions in values outside quotes (e.g. 0.55*55 -> 30.25)
+    def _eval_arithmetic_match(m):
+        left = float(m.group(1))
+        op = m.group(2)
+        right = float(m.group(3))
+        if op == "*":
+            val = left * right
+        elif op == "/":
+            val = left / right if right != 0 else 0.0
+        elif op == "+":
+            val = left + right
+        elif op == "-":
+            val = left - right
+        else:
+            return m.group(0)
+        return f": {round(val, 2)}"
+
+    res = re.sub(
+        r':\s*(-?\d+(?:\.\d+)?)\s*([*+/-])\s*(-?\d+(?:\.\d+)?)',
+        _eval_arithmetic_match,
+        res,
+    )
+    return res
 
 
 def parse_json_tolerant(text: str):

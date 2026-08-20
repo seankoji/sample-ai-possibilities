@@ -165,13 +165,28 @@ def test_shot_discipline():
     assert sanitized[0]["parameters"]["power"] >= 0.90
     print("  SHOOT kept with clinical finishing power >= 0.90")
 
-    # 2. Attackers in attacking half passing to GK (P0) -> re-routed or converted to SHOOT (anti-backpass)
+    # 2. Blocked shot (2 blockers, default max_shot_blockers=2) -> converted to PASS
+    sanitized_blocked = sanitize_commands(cmds, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_rules)
+    assert len(sanitized_blocked) == 1
+    assert sanitized_blocked[0]["commandType"] == "PASS", f"Expected PASS, got {sanitized_blocked[0]['commandType']}"
+    assert sanitized_blocked[0]["parameters"].get("target_player_id") in (1, 2, 3)
+    print("  Blocked shot with >= 2 blockers converted to PASS")
+
+    # 3. Shot outside attacking third (e.g. from midfield x=10) -> converted to PASS
+    state_midfield_shot = json.loads(json.dumps(GAME_STATE_NO_BLOCKERS))
+    state_midfield_shot["players"][4]["position"] = {"x": 10.0, "y": 0.0} # not in attacking third
+    sanitized_midfield = sanitize_commands(cmds, state_midfield_shot, TEAM_ID, 4, st_rules)
+    assert len(sanitized_midfield) == 1
+    assert sanitized_midfield[0]["commandType"] == "PASS", f"Expected PASS, got {sanitized_midfield[0]['commandType']}"
+    print("  Shot outside attacking third converted to PASS")
+
+    # 4. Attackers in attacking half passing to GK (P0) -> re-routed to outfield teammate
     cmds_backpass = [{"commandType": "PASS", "parameters": {"target_player_id": 0, "type": "GROUND"}}]
     sanitized_backpass = sanitize_commands(cmds_backpass, GAME_STATE_NO_BLOCKERS, TEAM_ID, 4, st_rules)
     assert len(sanitized_backpass) == 1
-    assert sanitized_backpass[0]["commandType"] in ("SHOOT", "PASS")
-    assert sanitized_backpass[0]["parameters"].get("target_player_id") != 0
-    print("  Anti-backpass guard prevented backward pass to GK")
+    assert sanitized_backpass[0]["commandType"] == "PASS"
+    assert sanitized_backpass[0]["parameters"].get("target_player_id") in (1, 2, 3)
+    print("  Anti-backpass guard re-routed pass to open outfield teammate")
 
     print("  Shot discipline tests PASSED")
     print()
@@ -187,14 +202,32 @@ def test_role_boundaries():
     assert sanitized_cb[0]["parameters"]["target_x"] == 0.0
     print("  CB target_x > 0 clamped to 0.0")
 
-    # GK: box_only clamps target_x to [-55, -40] and target_y to [-20, 20]
+    # GK: allowed in Zones 2, 5 (central defensive corridor: x in [-52, -19], |y| <= 2.0)
     gk_rules = RoleRules(label="GK", box_only=True, may_press=False, shoot_gate=True)
-    cmds_gk = [{"commandType": "MOVE_TO", "parameters": {"target_x": -10.0, "target_y": 30.0, "sprint": True}}]
+    cmds_gk = [{"commandType": "MOVE_TO", "parameters": {"target_x": -30.0, "target_y": 20.0, "sprint": False}}]
     sanitized_gk = sanitize_commands(cmds_gk, GAME_STATE, TEAM_ID, 0, gk_rules)
     assert len(sanitized_gk) == 1
-    assert sanitized_gk[0]["parameters"]["target_x"] == -40.0
-    assert sanitized_gk[0]["parameters"]["target_y"] == 20.0
-    print("  GK target_x and target_y clamped to box region")
+    assert sanitized_gk[0]["parameters"]["target_x"] == -30.0
+    assert sanitized_gk[0]["parameters"]["target_y"] == 2.0
+    print("  GK target_x and target_y clamped to Zones 2, 5")
+
+    # ST: allows 18-yard box entry (x <= 48.5) and central corridor (|y| <= 2.0)
+    st_rules = RoleRules(label="ST", own_half_only=False, may_press=True, shoot_gate=True)
+    cmds_st = [{"commandType": "MOVE_TO", "parameters": {"target_x": 48.0, "target_y": 15.0, "sprint": True}}]
+    sanitized_st = sanitize_commands(cmds_st, GAME_STATE, TEAM_ID, 4, st_rules)
+    assert len(sanitized_st) == 1
+    assert sanitized_st[0]["parameters"]["target_x"] == 48.0, "ST permitted in Zones 11, 14, 17 (18-yard box)"
+    assert sanitized_st[0]["parameters"]["target_y"] == 2.0, "ST target_y clamped to central corridor"
+    print("  ST 18-yard box entry permitted in Zone 17, central corridor (|y| <= 2.0)")
+
+    # LM: left channel bounds (Zones 4, 7, 10, 13, 16: y in [-7.0, -3.0], |x| <= 48.0)
+    lm_rules = RoleRules(label="LM", own_half_only=False, may_press=True, shoot_gate=True, home_y=-8.0)
+    cmds_lm = [{"commandType": "MOVE_TO", "parameters": {"target_x": 45.0, "target_y": -15.0, "sprint": False}}]
+    sanitized_lm = sanitize_commands(cmds_lm, GAME_STATE, TEAM_ID, 2, lm_rules)
+    assert len(sanitized_lm) == 1
+    assert sanitized_lm[0]["parameters"]["target_x"] == 45.0
+    assert sanitized_lm[0]["parameters"]["target_y"] == -7.0, "LM target_y clamped to left flank"
+    print("  LM left flank movement up to x=45, y=-7 permitted in Zone 16")
 
     print("  Role boundaries tests PASSED")
     print()
@@ -222,7 +255,7 @@ def test_stamina_and_flank():
     sanitized_flank = sanitize_commands(cmds_press, GAME_STATE_OPPOSITE_FLANK, TEAM_ID, 2, lm_rules)
     assert len(sanitized_flank) == 1
     assert sanitized_flank[0]["commandType"] == "MOVE_TO"
-    assert sanitized_flank[0]["parameters"]["target_y"] in (-15.0, -12.0, -8.0)
+    assert sanitized_flank[0]["parameters"]["target_y"] <= -3.0
     assert sanitized_flank[0]["parameters"]["sprint"] is False
     print("  Opposite flank substituted PRESS_BALL with jog MOVE_TO home flank")
 

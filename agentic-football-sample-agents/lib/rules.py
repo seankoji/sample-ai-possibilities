@@ -18,6 +18,7 @@ from state import (
     is_lane_blocked,
     get_far_post_aim,
 )
+from zones import clamp_coords_to_position_zones, ALLOWED_ZONES
 
 
 @dataclass
@@ -216,34 +217,60 @@ def sanitize_commands(
 
         # Rule 3: Shot discipline & Dynamic Far-Post Aiming
         if cmd_type == "SHOOT":
-            # Dynamic far-post corner relative to opponent GK
-            opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
-            if opp_gk:
-                opp_gk_y = opp_gk.get("position", {}).get("y", 0.0)
-                current_aim = params.get("aim_location", "CENTER")
-                prefer_top = ("T" in current_aim or current_aim == "CENTER")
-                params["aim_location"] = get_far_post_aim(opp_gk_y, prefer_top=prefer_top)
-            # Guarantee maximum shot power for clinical finishing
-            params["power"] = max(0.90, float(params.get("power", 0.95)))
+            # Check shot discipline gate if enabled
+            if getattr(rules, "shoot_gate", False):
+                in_att_third = is_attacking_third(my_pos.get("x", 0.0), team_id)
+                dist_to_opp_goal = dist(my_pos, {"x": opp_goal_x, "y": 0.0})
+                num_blockers = shot_blockers(my_pos, opp_goal_x, opponents)
+                max_blockers = 3 if is_chasing else getattr(rules, "max_shot_blockers", 2)
+
+                # Inside scoring range (<= 18m or inside box) with viable angle, ALWAYS permit shooting
+                is_in_box_shot = (dist_to_opp_goal <= 18.0 and abs(my_pos.get("y", 0.0)) <= 8.0 and num_blockers <= 2)
+
+                # Require attacking third AND (in-box shot OR blockers < max_shot_blockers)
+                if not in_att_third or (not is_in_box_shot and num_blockers >= max_blockers):
+                    # Non-viable long-distance shot -> convert to PASS to least-blocked forward teammate
+                    cmd_type = "PASS"
+                    forward_tms = [
+                        p for p in my_team
+                        if _player_idx(p) not in (0, my_player_id)
+                    ]
+                    if forward_tms:
+                        unblocked = [
+                            p for p in forward_tms
+                            if not is_lane_blocked(my_pos, p.get("position", {}), opponents, clearance=2.0)
+                        ]
+                        pool = unblocked if unblocked else forward_tms
+                        best_tm = min(
+                            pool,
+                            key=lambda p: abs(p.get("position", {}).get("x", 0.0) - opp_goal_x),
+                        )
+                        pass_type = "GROUND" if unblocked else "AERIAL"
+                        params = {"target_player_id": _player_idx(best_tm), "type": pass_type}
+                    else:
+                        params = {"target_player_id": 2 if my_player_id != 2 else 3, "type": "GROUND"}
+                    duration = 0
+
+            if cmd_type == "SHOOT":
+                # Dynamic far-post corner relative to opponent GK
+                opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+                if opp_gk:
+                    opp_gk_y = opp_gk.get("position", {}).get("y", 0.0)
+                    current_aim = params.get("aim_location", "CENTER")
+                    prefer_top = ("T" in current_aim or current_aim == "CENTER")
+                    params["aim_location"] = get_far_post_aim(opp_gk_y, prefer_top=prefer_top)
+                # Guarantee maximum shot power for clinical finishing
+                params["power"] = max(0.90, float(params.get("power", 0.95)))
 
         # Rule 3b: Passing Direction & Anti-Backpass Guard
-        # Attackers in attacking half are strictly forbidden from passing backward to GK (player 0)
+        # Attackers in attacking half should not pass backward to GK (P0); re-route to an open outfield teammate
         if cmd_type == "PASS":
             target_pid = params.get("target_player_id")
             if target_pid == 0 and my_player_id != 0:
-                dist_opp_goal = abs(my_pos.get("x", 0) - opp_goal_x)
-                if dist_opp_goal < 28.0:
-                    # In front of open goal / shooting range -> SHOOT!
-                    cmd_type = "SHOOT"
-                    opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
-                    gk_y = opp_gk.get("position", {}).get("y", 0.0) if opp_gk else 0.0
-                    params = {"aim_location": "BR" if gk_y < 0 else "BL", "power": 0.95}
-                    duration = 0
-                else:
-                    forward_tms = [p for p in my_team if _player_idx(p) not in (0, my_player_id)]
-                    if forward_tms:
-                        best_tm = min(forward_tms, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
-                        params["target_player_id"] = _player_idx(best_tm)
+                forward_tms = [p for p in my_team if _player_idx(p) not in (0, my_player_id)]
+                if forward_tms:
+                    best_tm = min(forward_tms, key=lambda p: abs(p.get("position", {}).get("x", 0) - opp_goal_x))
+                    params["target_player_id"] = _player_idx(best_tm)
 
         # Passing lane clearance & re-routing
         if cmd_type == "PASS":
@@ -309,31 +336,16 @@ def sanitize_commands(
                     chosen_id = _player_idx(outfield[0]) if outfield else 1
                 params["target_player_id"] = chosen_id
 
-        # Rule 4: Role boundaries
+        # Rule 4: 18-Zone Spatial Boundary & Tactical Corridor Clamping
         if cmd_type == "MOVE_TO":
             tx = float(params.get("target_x", 0.0))
             ty = float(params.get("target_y", 0.0))
-            if rules.own_half_only:
-                if is_chasing:
-                    # Relax CB boundary when chasing deficit in second half
-                    max_adv = opp_goal_x * 0.4
-                    if team_id == 0:
-                        tx = max(-55.0, min(max_adv, tx))
-                    else:
-                        tx = min(55.0, max(max_adv, tx))
-                else:
-                    if team_id == 0:
-                        tx = min(tx, 0.0)
-                    else:
-                        tx = max(tx, 0.0)
-            if rules.box_only:
-                if team_id == 0:
-                    tx = max(-55.0, min(-40.0, tx))
-                else:
-                    tx = min(55.0, max(40.0, tx))
-                ty = max(-20.0, min(20.0, ty))
-            params["target_x"] = tx
-            params["target_y"] = ty
+            role_label = getattr(rules, "label", "")
+            tx_clamped, ty_clamped = clamp_coords_to_position_zones(
+                tx, ty, role_label, my_player_id, team_id, is_chasing=is_chasing
+            )
+            params["target_x"] = tx_clamped
+            params["target_y"] = ty_clamped
 
         # Rule 5: Stamina & opposite-flank & defending lead checks
         if low_stamina or is_defending_lead:
@@ -358,27 +370,6 @@ def sanitize_commands(
                     "sprint": False,
                 }
                 duration = 0
-        # Rule 5: Wall Anti-Collision, Outfield Compactness & CB Anti-Goal Clamp
-        # 1. CB / DEF is strictly prohibited from dropping deeper than x = -36.0 (Team 0) / 36.0 (Team 1) -> NEVER stands in goal!
-        # 2. Outfield attackers and midfielders bounded to |x| <= 38.0, |y| <= 12.0
-        # 3. Only GK is allowed inside the goal area (|x| > 36.0).
-        if cmd_type == "MOVE_TO":
-            tx = float(params.get("target_x", 0.0))
-            ty = float(params.get("target_y", 0.0))
-            if my_player_id == 0:
-                params["target_x"] = max(-52.0, min(52.0, tx))
-                params["target_y"] = max(-20.0, min(20.0, ty))
-            elif my_player_id == 1 or getattr(rules, "own_half_only", False):
-                if team_id == 0:
-                    max_x = 15.0 if is_chasing else 0.0
-                    params["target_x"] = max(-32.0, min(max_x, tx))
-                else:
-                    min_x = -15.0 if is_chasing else 0.0
-                    params["target_x"] = max(min_x, min(32.0, tx))
-                params["target_y"] = max(-8.0, min(8.0, ty))
-            else:
-                params["target_x"] = max(-35.0, min(35.0, tx))
-                params["target_y"] = max(-8.0, min(8.0, ty))
 
         # Rule 5b: Anti-Goal Line MARK guard — don't follow opponents into our own net
         if cmd_type == "MARK" and getattr(rules, "own_half_only", False):
@@ -393,7 +384,7 @@ def sanitize_commands(
                     params = {"target_x": my_goal_x * 0.50, "target_y": max(-6.0, min(6.0, target_opp.get("position", {}).get("y", 0))), "sprint": False}
                     duration = 0
 
-        # Rule 4: Stamina preservation — no sprint below stamina 30
+        # Rule 6: Stamina preservation — no sprint below stamina 30
         if cmd_type == "MOVE_TO" and params.get("sprint", False):
             min_sprint = getattr(rules, "min_sprint_stamina", 30) if rules else 30
             if stam < min_sprint:

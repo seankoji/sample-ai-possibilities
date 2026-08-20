@@ -43,30 +43,45 @@ class TacticalMemoryTracker:
     """Rolling match memory that accumulates opponent telemetry across ticks."""
     
     def __init__(self):
-        self.history_len = 0
-        self.high_press_ticks = 0
-        self.low_block_ticks = 0
-        self.left_flank_attacks = 0
-        self.right_flank_attacks = 0
-        self.gk_sweeper_ticks = 0
-        self.swarm_ticks = 0
+        self.last_game_time = 0.0
+        self.history_len = 0.0
+        self.high_press_ticks = 0.0
+        self.low_block_ticks = 0.0
+        self.left_flank_attacks = 0.0
+        self.right_flank_attacks = 0.0
+        self.gk_sweeper_ticks = 0.0
+        self.swarm_ticks = 0.0
         self.last_possession_team = None
         self.gegenpress_ticks_remaining = 0
         
     def reset(self):
-        self.history_len = 0
-        self.high_press_ticks = 0
-        self.low_block_ticks = 0
-        self.left_flank_attacks = 0
-        self.right_flank_attacks = 0
-        self.gk_sweeper_ticks = 0
-        self.swarm_ticks = 0
+        self.last_game_time = 0.0
+        self.history_len = 0.0
+        self.high_press_ticks = 0.0
+        self.low_block_ticks = 0.0
+        self.left_flank_attacks = 0.0
+        self.right_flank_attacks = 0.0
+        self.gk_sweeper_ticks = 0.0
+        self.swarm_ticks = 0.0
         self.last_possession_team = None
         self.gegenpress_ticks_remaining = 0
 
     def record_tick(self, game_state: dict, team_id: int):
-        """Observe opponent positioning and update rolling metrics."""
-        self.history_len += 1
+        """Observe opponent positioning and update rolling metrics with exponential decay."""
+        now = float(game_state.get("gameTime", 0) or 0)
+        if now < self.last_game_time - 5.0:  # clock went backwards -> new match
+            self.reset()
+        self.last_game_time = now
+
+        decay = 0.95
+        self.history_len = self.history_len * decay + 1.0
+        self.high_press_ticks *= decay
+        self.low_block_ticks *= decay
+        self.left_flank_attacks *= decay
+        self.right_flank_attacks *= decay
+        self.gk_sweeper_ticks *= decay
+        self.swarm_ticks *= decay
+
         players = game_state.get("players", [])
         opponents = [p for p in players if not _is_my_team(p, team_id)]
         ball = game_state.get("ball", {})
@@ -79,7 +94,7 @@ class TacticalMemoryTracker:
             if (p.get("position", {}).get("x", 0) < 0 if team_id == 0 else p.get("position", {}).get("x", 0) > 0)
         )
         if opps_in_our_half >= 3:
-            self.high_press_ticks += 1
+            self.high_press_ticks += 1.0
 
         # 2. Low Block Tracking: >= 4 opponents in their defensive third
         opps_in_box = sum(
@@ -87,15 +102,15 @@ class TacticalMemoryTracker:
             if (p.get("position", {}).get("x", 0) > 25.0 if team_id == 0 else p.get("position", {}).get("x", 0) < -25.0)
         )
         if opps_in_box >= 4:
-            self.low_block_ticks += 1
+            self.low_block_ticks += 1.0
 
         # 3. Flank Bias Tracking: when opponent attacks, track left vs right flank
         opp_in_possession = any(_player_idx(p) == ball.get("possessionAgentId") for p in opponents)
         if opp_in_possession or (ball_pos.get("x", 0) < 0 if team_id == 0 else ball_pos.get("x", 0) > 0):
             if ball_pos.get("y", 0) < -6.0:
-                self.left_flank_attacks += 1
+                self.left_flank_attacks += 1.0
             elif ball_pos.get("y", 0) > 6.0:
-                self.right_flank_attacks += 1
+                self.right_flank_attacks += 1.0
 
         # 4. Opponent GK Depth Tracking
         opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
@@ -103,7 +118,7 @@ class TacticalMemoryTracker:
             gk_x = opp_gk.get("position", {}).get("x", opp_goal_x)
             # If GK stands further than 6m off their goal line
             if abs(gk_x - opp_goal_x) > 6.0:
-                self.gk_sweeper_ticks += 1
+                self.gk_sweeper_ticks += 1.0
 
         # 5. Swarm Press Tracking: Opponents within 4.5m of our ball carrier
         my_carrier = next((p for p in players if _is_my_team(p, team_id) and _player_idx(p) == ball.get("possessionAgentId")), None)
@@ -111,7 +126,7 @@ class TacticalMemoryTracker:
             c_pos = my_carrier.get("position", {})
             opps_near = sum(1 for p in opponents if dist(p.get("position", {}), c_pos) < 4.5)
             if opps_near >= 2:
-                self.swarm_ticks += 1
+                self.swarm_ticks += 1.0
 
         # 6. Turnover Gegenpress Tracking (3-second immediate counter-press on turnover)
         current_possession_team = None

@@ -5,7 +5,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from test_helpers import mock_agentcore, GAME_STATE_TWO_BLOCKERS, TEAM_ID
+from test_helpers import mock_agentcore, GAME_STATE_NO_BLOCKERS, GAME_STATE_TWO_BLOCKERS, TEAM_ID
 
 mock_agentcore()
 
@@ -146,19 +146,33 @@ def test_shot_gate_respects_posture():
         {"commandType": "SHOOT", "parameters": {"aim_location": "TR", "power": 0.9}}
     ]
 
-    # Default gate: SHOOT survives with dynamic far-post aiming
     st_default = RoleRules(label="ST")
-    out = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_default)
-    assert len(out) == 1 and out[0]["commandType"] == "SHOOT", (
-        f"expected SHOOT, got {out}"
-    )
-    assert out[0]["parameters"]["power"] >= 0.90
 
-    # ALL_OUT gate: SHOOT survives
+    # Clear shot in attacking third -> SHOOT survives with dynamic far-post aiming
+    out_clear = sanitize_commands(shoot, GAME_STATE_NO_BLOCKERS, TEAM_ID, 4, st_default)
+    assert len(out_clear) == 1 and out_clear[0]["commandType"] == "SHOOT", (
+        f"expected SHOOT, got {out_clear}"
+    )
+    assert out_clear[0]["parameters"]["power"] >= 0.90
+
+    # Default gate (max_blockers=2): 2 blockers -> converted to PASS
+    out_default_blocked = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_default)
+    assert len(out_default_blocked) == 1 and out_default_blocked[0]["commandType"] == "PASS", (
+        f"expected PASS, got {out_default_blocked}"
+    )
+
+    # ALL_OUT gate (max_blockers=3): 2 blockers -> SHOOT survives
     st_all_out = apply_posture(st_default, coach.ALL_OUT)
-    out2 = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_all_out)
-    assert len(out2) == 1 and out2[0]["commandType"] == "SHOOT", (
-        f"expected SHOOT, got {out2}"
+    out_all_out = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_all_out)
+    assert len(out_all_out) == 1 and out_all_out[0]["commandType"] == "SHOOT", (
+        f"expected SHOOT, got {out_all_out}"
+    )
+
+    # DEFENSIVE gate (max_blockers=1): 2 blockers -> converted to PASS
+    st_defensive = apply_posture(st_default, coach.DEFENSIVE)
+    out_def = sanitize_commands(shoot, GAME_STATE_TWO_BLOCKERS, TEAM_ID, 4, st_defensive)
+    assert len(out_def) == 1 and out_def[0]["commandType"] == "PASS", (
+        f"expected PASS, got {out_def}"
     )
 
     print("  Shot-gate posture tests PASSED")

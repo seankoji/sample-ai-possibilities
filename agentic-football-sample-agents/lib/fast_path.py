@@ -77,6 +77,11 @@ def fast_path_decision(
         cb_anchor_x = my_goal_x * 0.55
     else:
         cb_anchor_x = my_goal_x * adaptive.defensive_line_x_factor
+    # Cap: CB must never go deeper than -40 (team 0) or 40 (team 1) — stay out of 6-yard box
+    if team_id == 0:
+        cb_anchor_x = max(cb_anchor_x, -38.0)
+    else:
+        cb_anchor_x = min(cb_anchor_x, 38.0)
     cb_shift_y = adaptive.defensive_line_shift_y
 
     # Fast path 0: Kickoff formation positioning & compact defensive wall
@@ -107,6 +112,23 @@ def fast_path_decision(
         if not gk_in_box:
             # GK is outside its box — override everything and sprint to goal area
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.90, "target_y": 0.0, "sprint": True}, "duration": 0}]
+
+    # Fast path 0c: Flank correction — if LM/RM on wrong side, immediately correct
+    # (only when not chasing a free ball)
+    if possession_id is not None:  # ball is held by someone, not free
+        if position_label == "LM" and my_pos.get("y", 0) > 2.0:
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_pos.get("x", 0), "target_y": -6.0, "sprint": True}, "duration": 0}]
+        if position_label == "RM" and my_pos.get("y", 0) < -2.0:
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_pos.get("x", 0), "target_y": 6.0, "sprint": True}, "duration": 0}]
+
+    # Fast path 0d: CB depth cap — never deeper than x=-40 (team 0) or x=40 (team 1)
+    # Keeps CB out of the 6-yard box, leaves that zone to GK
+    # Only applies when CB doesn't have the ball (if he has it there, he should clear it)
+    if position_label in ("CB", "DEF") and possession_id != my_player_id:
+        if team_id == 0 and my_pos.get("x", 0) < -40:
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": -25.0, "target_y": 0.0, "sprint": True}, "duration": 0}]
+        elif team_id == 1 and my_pos.get("x", 0) > 40:
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": 25.0, "target_y": 0.0, "sprint": True}, "duration": 0}]
 
     # Fast path 1: GK has ball → ALL players use LLM for intelligent build-up positioning
     # When our GK is holding, every player needs to think about where to stand to be a valid target

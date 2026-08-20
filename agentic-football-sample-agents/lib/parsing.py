@@ -7,6 +7,7 @@ from json_tolerant import parse_json_tolerant
 VALID_COMMANDS = {
     "MOVE_TO", "PASS", "SHOOT", "SLIDE_TACKLE", "PRESS_BALL", "INTERCEPT", "MARK",
     "FOLLOW_PLAYER", "GK_DISTRIBUTE", "SET_STANCE", "CLEAR_OVERRIDE", "RESET",
+    "HOLD_POSITION",
 }
 
 
@@ -76,6 +77,12 @@ def _tag_commands(commands: list, team_id: int, my_player_id: int) -> list[dict]
             except (ValueError, TypeError):
                 cmd["duration"] = 0
 
+        # HOLD_POSITION -> Convert to MOVE_TO
+        if cmd_type == "HOLD_POSITION":
+            cmd["commandType"] = "MOVE_TO"
+            cmd_type = "MOVE_TO"
+            params["sprint"] = False
+
         # MOVE_TO
         if cmd_type == "MOVE_TO":
             if "target_x" in params:
@@ -94,6 +101,8 @@ def _tag_commands(commands: list, team_id: int, my_player_id: int) -> list[dict]
                 params["target_y"] = _clamp(params["target_y"], -35, 35)
             if "sprint" in params and not isinstance(params["sprint"], bool):
                 params["sprint"] = str(params["sprint"]).strip().lower() in ("true", "1")
+            elif "sprint" not in params:
+                params["sprint"] = False
 
         # SET_STANCE
         if cmd_type == "SET_STANCE":

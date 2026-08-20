@@ -132,6 +132,32 @@ def test_string_type_casting_and_normalization():
     print()
 
 
+def test_hold_position_recovery():
+    print("=== TEST HOLD_POSITION RECOVERY ===")
+    text = '[{"commandType":"HOLD_POSITION","playerId":0,"parameters":{}}]'
+    cmds = parse_commands(text, TEAM_ID, 0)
+    assert len(cmds) == 1
+    assert cmds[0]["commandType"] == "MOVE_TO"
+    assert cmds[0]["parameters"]["sprint"] is False
+    print("  HOLD_POSITION mapped to MOVE_TO successfully")
+
+
+def test_arithmetic_expression_recovery():
+    print("=== TEST ARITHMETIC EXPRESSION RECOVERY ===")
+    text = '[{"commandType":"MOVE_TO","parameters":{"target_x":0.55*55,"target_y":0,"sprint":false}}]'
+    cmds = parse_commands(text, TEAM_ID, 1)
+    assert len(cmds) == 1
+    assert cmds[0]["commandType"] == "MOVE_TO"
+    assert cmds[0]["parameters"]["target_x"] == 30.25
+    assert cmds[0]["parameters"]["sprint"] is False
+
+    text_fwd = '[{"commandType":"MOVE_TO","parameters":{"target_x":-0.45*55,"target_y":5.0}}]'
+    cmds_fwd = parse_commands(text_fwd, TEAM_ID, 3)
+    assert len(cmds_fwd) == 1
+    assert cmds_fwd[0]["parameters"]["target_x"] == -24.75
+    print("  Arithmetic expressions (0.55*55, -0.45*55) evaluated to floats successfully")
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

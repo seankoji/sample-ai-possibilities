@@ -27,14 +27,9 @@ from typing import List, Tuple, Dict, Any
 REPO_ROOT = Path(__file__).parent.resolve()
 LIB_DIR = REPO_ROOT / "lib"
 
-ALL_TEAMS = [
-    "ai-team-strands-balanced",
-    "ai-team-strands-diamond",
-    "ai-team-strands-memory",
-    "ai-team-strands-gateway",
-    "ai-team-strands-extremely-aggressive",
-    "ai-team-strands-extremely-defensive",
-]
+ALL_TEAMS = sorted(
+    [d.name for d in REPO_ROOT.iterdir() if d.is_dir() and d.name.startswith("ai-team-")]
+) or ["ai-team-strands-diamond"]
 
 POSITIONS = ["ai-gk", "ai-def", "ai-mid", "ai-fwd1", "ai-fwd2"]
 
