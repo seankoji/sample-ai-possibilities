@@ -183,6 +183,31 @@ if existing != targets:
     targets_file.write_text(json.dumps(targets, indent=2) + "\n", encoding="utf-8")
     print(f"  Wrote deploy target to {targets_file.relative_to(SCRIPT_DIR)}\n")
 
+
+# ── Pre-deploy validation (test_local.py for all agents) ───────────────────
+print("==========================================")
+print("  Pre-Deploy Validation")
+print("==========================================")
+for agent in agents:
+    agent_dir = SCRIPT_DIR / agent
+    test_script = agent_dir / "test_local.py"
+    if test_script.exists():
+        print(f"  Testing {agent} ({test_script.name})...")
+        res = subprocess.run(
+            [sys.executable, str(test_script)],
+            cwd=SCRIPT_DIR,
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0:
+            print(f"\nERROR: Pre-deploy validation failed for {agent}!")
+            print(res.stdout)
+            if res.stderr:
+                print(res.stderr)
+            sys.exit(1)
+        print(f"  {agent}: PASS")
+print("All pre-deploy validation tests passed.\n")
+
 try:
     # ── Install CDK node_modules if needed ───────────────────────────────────
 

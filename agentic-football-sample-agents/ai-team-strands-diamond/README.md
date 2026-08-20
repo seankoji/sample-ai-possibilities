@@ -238,3 +238,40 @@ safety net, not a substitute for asking clearly for JSON.
 - y: roughly -35 to +35
 - Team 0 (HOME) defends -x, attacks toward +x
 - Team 1 (AWAY) defends +x, attacks toward -x
+
+## Debugging & Observability
+
+### 1. Tail Live CloudWatch Logs
+Each agent deployed to Bedrock AgentCore automatically streams execution logs to CloudWatch. You can tail live agent logs using the AWS CLI:
+
+```bash
+# General syntax:
+aws logs tail /aws/bedrock-agentcore/runtime/<agent_runtime_name> --follow
+
+# Examples for diamond team positions:
+aws logs tail /aws/bedrock-agentcore/runtime/ai_diamond_gk_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_diamond_def_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_diamond_mid_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_diamond_fwd1_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_diamond_fwd2_agent --follow
+```
+
+Key log patterns to monitor:
+- `[INFO] <POS> agent invoked for team X, controlling player Y` — Confirms invocation payload and player mapping.
+- `[INFO] LLM returned N commands: ['...']` — Confirms model generated valid, parseable commands.
+- `[WARN] <POS> recovered malformed JSON from the model` — Indicates JSON recovery repaired non-standard output.
+- `[WARN] LLM parse/sanitize failed, using fallback` — Indicates model output was unparseable or rejected by tactical guardrails.
+- `[ERROR] <POS> agent error: ...` — Runtime error triggering layer-3 emergency fallback.
+
+### 2. Metrics & Cost Tracking in Bedrock Console & Player Portal
+In the **AWS Management Console (Bedrock / CloudWatch)** and **Agentic Football Player Portal**:
+- **Invocation Count**: Verify that agents receive exactly 1 invocation per tick (5 invocations/tick across the full team).
+- **Latency & Timeouts**: Monitor round-trip execution latency (<300ms for Nova Micro across all 5 diamond agents).
+- **Token Consumption**: Diamond prompts are optimized for <250 tokens per tick.
+
+### 3. Match Replay Commentary & Decision Debugging
+When inspecting match replays in the portal:
+- Verify formation integrity: CB staying in own half, LM/RM providing width, ST holding up play.
+- Correlate tactical decisions with CloudWatch log entries to ensure guardrails (`RoleRules`) are functioning as expected.
+- Test decision logic offline anytime with `python run_tests.py ai-team-strands-diamond` or `python ai-gk/test_local.py --llm`.
+

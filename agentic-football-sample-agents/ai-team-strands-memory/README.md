@@ -214,3 +214,40 @@ Note the two paths manage **separate resources**: the legacy flow creates a
 memory named `AITeamMatchMemory` outside CloudFormation, while this flow
 creates `team_memory` inside the stack. Running both against one account
 leaves two memory resources and two sets of agent runtimes.
+
+## Debugging & Observability
+
+### 1. Tail Live CloudWatch Logs
+Each memory-enabled agent automatically streams execution logs and memory hooks to CloudWatch. You can tail live agent logs using the AWS CLI:
+
+```bash
+# General syntax:
+aws logs tail /aws/bedrock-agentcore/runtime/<agent_runtime_name> --follow
+
+# Examples for memory team positions:
+aws logs tail /aws/bedrock-agentcore/runtime/ai_memory_gk_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_memory_def_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_memory_mid_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_memory_fwd1_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_memory_fwd2_agent --follow
+```
+
+Key log patterns to monitor:
+- `[INFO] <POS> agent invoked for team X, controlling player Y` — Confirms invocation payload.
+- `[INFO] LLM returned N commands: ['...']` — Confirms successful LLM inference with recalled memory.
+- `[WARN] <POS> recovered malformed JSON from the model` — Indicates JSON recovery repaired non-standard output.
+- `[WARN] LLM parse/sanitize failed, using fallback` — Indicates model output was unparseable or rejected by tactical guardrails.
+- `[ERROR] <POS> agent error: ...` — Runtime error triggering layer-3 emergency fallback.
+
+### 2. Metrics & Cost Tracking in Bedrock Console & Player Portal
+In the **AWS Management Console (Bedrock / CloudWatch)** and **Agentic Football Player Portal**:
+- **Memory Event Writes**: In Bedrock Console → Memory → Observability, check that `Create events` matches match ticks × 5 agents.
+- **Invocation Count**: Verify that agents receive exactly 1 invocation per tick.
+- **Latency & Timeouts**: Monitor round-trip execution latency including memory session manager retrieval.
+
+### 3. Match Replay Commentary & Decision Debugging
+When inspecting match replays in the portal:
+- Verify adaptive behavior: agents adjusting marking or shooting targets after observing opponent patterns over multiple ticks.
+- Match replay timestamps with CloudWatch logs and STM session memory records.
+- Test decision and memory integration offline anytime with `python run_tests.py ai-team-strands-memory` or `python ai-gk/test_local.py --llm`.
+

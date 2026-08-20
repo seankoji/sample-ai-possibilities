@@ -224,3 +224,40 @@ safety net, not a substitute for asking clearly for JSON.
 - y: roughly -35 to +35
 - Team 0 (HOME) defends -x, attacks toward +x
 - Team 1 (AWAY) defends +x, attacks toward -x
+
+## Debugging & Observability
+
+### 1. Tail Live CloudWatch Logs
+Each agent deployed to Bedrock AgentCore automatically streams execution logs to CloudWatch. You can tail live agent logs using the AWS CLI:
+
+```bash
+# General syntax:
+aws logs tail /aws/bedrock-agentcore/runtime/<agent_runtime_name> --follow
+
+# Examples for balanced team positions:
+aws logs tail /aws/bedrock-agentcore/runtime/ai_balanced_gk_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_balanced_def_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_balanced_mid_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_balanced_fwd1_agent --follow
+aws logs tail /aws/bedrock-agentcore/runtime/ai_balanced_fwd2_agent --follow
+```
+
+Key log patterns to monitor:
+- `[INFO] <POS> agent invoked for team X, controlling player Y` — Confirms invocation payload and player mapping.
+- `[INFO] LLM returned N commands: ['...']` — Confirms model generated valid, parseable commands.
+- `[WARN] <POS> recovered malformed JSON from the model` — Indicates JSON recovery repaired non-standard output.
+- `[WARN] LLM parse/sanitize failed, using fallback` — Indicates model output was unparseable or rejected, triggering fallback.
+- `[ERROR] <POS> agent error: ...` — Runtime error triggering layer-3 emergency fallback.
+
+### 2. Metrics & Cost Tracking in Bedrock Console & Player Portal
+In the **AWS Management Console (Bedrock / CloudWatch)** and **Agentic Football Player Portal**:
+- **Invocation Count**: Verify that agents receive exactly 1 invocation per tick (5 invocations/tick across the full team).
+- **Latency & Timeouts**: Monitor round-trip execution latency (<300ms for Nova Micro, <600ms for Nova Lite/Pro).
+- **Token Consumption**: Keep input prompt length minimal to ensure fast response times and low token usage.
+
+### 3. Match Replay Commentary & Decision Debugging
+When inspecting match replays in the portal:
+- Match replay events and commentary with timestamps in CloudWatch logs.
+- Identify whether specific movements/passes originated from the LLM or rule-based fallback.
+- Test decision logic offline anytime with `python run_tests.py ai-team-strands-balanced` or `python ai-gk/test_local.py --llm`.
+

@@ -68,17 +68,34 @@ def _tag_commands(commands: list, team_id: int, my_player_id: int) -> list[dict]
                     params["target_x"] = _clamp(params["target_x"], -55, 55)
                 if isinstance(params.get("target_y"), (int, float)):
                     params["target_y"] = _clamp(params["target_y"], -35, 35)
+            # Ensure SET_STANCE has valid stance int
+            if cmd["commandType"] == "SET_STANCE":
+                params = cmd.get("parameters", {})
+                if params.get("stance") not in (0, 1, 2):
+                    params["stance"] = 0
+                cmd["parameters"] = params
+            # Ensure SHOOT has aim_location and power
+            if cmd["commandType"] == "SHOOT":
+                params = cmd.get("parameters", {})
+                if params.get("aim_location") not in ("TL", "TR", "BL", "BR", "CENTER"):
+                    params["aim_location"] = "CENTER"
+                if not isinstance(params.get("power"), (int, float)) or not (0.0 <= params["power"] <= 1.0):
+                    params["power"] = 0.8
+                cmd["parameters"] = params
             # Ensure PASS/MARK/FOLLOW_PLAYER/GK_DISTRIBUTE/SLIDE_TACKLE have target_player_id
             if cmd["commandType"] in ("PASS", "MARK", "FOLLOW_PLAYER", "GK_DISTRIBUTE", "SLIDE_TACKLE"):
                 params = cmd.get("parameters", {})
                 if params.get("target_player_id") is None:
                     # Default: pass to a forward, mark nearest opponent, tackle ball carrier
                     if cmd["commandType"] in ("PASS", "GK_DISTRIBUTE"):
-                        params["target_player_id"] = 3 if my_player_id != 3 else 4
+                        params["target_player_id"] = 1 if my_player_id == 0 else (3 if my_player_id != 3 else 4)
                     elif cmd["commandType"] == "SLIDE_TACKLE":
                         params["target_player_id"] = -1  # target ball carrier
                     else:
                         params["target_player_id"] = 0  # mark/follow opponent 0
-                    cmd["parameters"] = params
+                if cmd["commandType"] == "GK_DISTRIBUTE":
+                    if params.get("method") not in ("THROW", "KICK"):
+                        params["method"] = "THROW"
+                cmd["parameters"] = params
             result.append(cmd)
     return result

@@ -7,6 +7,7 @@ from state import (
     _player_idx,
     _is_my_team,
     get_goal_positions,
+    get_possession_info,
     dist,
     is_nearest_to_ball,
     is_attacking_third,
@@ -172,6 +173,14 @@ def sanitize_commands(
                     duration = 0
                 else:
                     continue
+
+        # GK possession enforcement: GK with ball must GK_DISTRIBUTE
+        if rules.box_only or my_player_id == 0:
+            poss_id, _, _ = get_possession_info(ball, players, team_id)
+            if poss_id == my_player_id and cmd_type != "GK_DISTRIBUTE":
+                cmd_type = "GK_DISTRIBUTE"
+                params = {"target_player_id": 1, "method": "THROW"}
+                duration = 0
 
         # Rule 4: Role boundaries
         if cmd_type == "MOVE_TO":

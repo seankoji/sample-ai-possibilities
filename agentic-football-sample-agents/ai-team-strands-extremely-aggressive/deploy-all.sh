@@ -73,6 +73,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ------ Pre-deploy validation ------
+echo "=========================================="
+echo "  Pre-Deploy Validation"
+echo "=========================================="
+for agent in "${AGENTS[@]}"; do
+  TEST_SCRIPT="$SCRIPT_DIR/$agent/test_local.py"
+  if [ -f "$TEST_SCRIPT" ]; then
+    echo "  Testing $agent..."
+    if ! python3 "$TEST_SCRIPT" > /dev/null 2>&1; then
+      echo "ERROR: Pre-deploy validation failed for $agent!"
+      python3 "$TEST_SCRIPT"
+      exit 1
+    fi
+    echo "  $agent: PASS"
+  fi
+done
+echo "All pre-deploy validation tests passed."
+echo ""
+
 DEPLOYED=()
 FAILED=()
 
