@@ -34,7 +34,7 @@ def test_fallback():
     assert all(c["playerId"] == MY_PLAYER_ID for c in cmds), "FAIL: wrong playerId"
     assert all(c["teamId"] == TEAM_ID for c in cmds), "FAIL: wrong teamId"
     assert cmds[0]["commandType"] == "MOVE_TO", f"FAIL: expected MOVE_TO, got {cmds[0]['commandType']}"
-    assert cmds[0]["parameters"]["target_y"] == 0, f"FAIL: expected target_y=0, got {cmds[0]["parameters"]["target_y"]}"
+    assert cmds[0]["parameters"]["target_y"] == 0, f"FAIL: expected target_y=0, got {cmds[0]['parameters']['target_y']}"
     print(f"  Correctly moves to central forward pocket")
     print()
 

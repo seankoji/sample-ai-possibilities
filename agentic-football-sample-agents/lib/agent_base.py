@@ -136,7 +136,12 @@ def create_invoke_handler(
         except Exception as e:
             log.error(f"{position_label} agent error: {e}")
             try:
-                prompt_data = json.loads(payload.get("prompt", "{}"))
+                raw_prompt = payload.get("prompt", "{}") if isinstance(payload, dict) else "{}"
+                prompt_data = (
+                    json.loads(raw_prompt)
+                    if isinstance(raw_prompt, str)
+                    else (raw_prompt if isinstance(raw_prompt, dict) else (payload if isinstance(payload, dict) else {}))
+                )
                 team_id = prompt_data.get("teamId", 0)
                 my_players = prompt_data.get("myPlayers", [my_player_id])
                 effective_pid = my_players[0] if my_players else my_player_id

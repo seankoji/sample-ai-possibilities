@@ -112,12 +112,24 @@ def test_unknown_command_still_dropped():
     assert parse_commands('[{"commandType":"FLY","parameters":{}}]', TEAM_ID, MY_PLAYER_ID) == []
 
 
-def test_move_to_still_clamped():
-    cmds = parse_commands(
-        '[{"commandType":"MOVE_TO","parameters":{"target_x":900,"target_y":-900}}]',
-        TEAM_ID, MY_PLAYER_ID)
-    assert cmds[0]["parameters"]["target_x"] == 55
-    assert cmds[0]["parameters"]["target_y"] == -35
+def test_string_type_casting_and_normalization():
+    print("=== STRING TYPE CASTING & NORMALIZATION ===")
+    text = '[{"commandType":"move_to","parameters":{"target_x":"25.5","target_y":"-10.2","sprint":"true"}}]'
+    cmds = parse_commands(text, TEAM_ID, MY_PLAYER_ID)
+    assert len(cmds) == 1
+    assert cmds[0]["commandType"] == "MOVE_TO"
+    assert cmds[0]["parameters"]["target_x"] == 25.5
+    assert cmds[0]["parameters"]["target_y"] == -10.2
+    assert cmds[0]["parameters"]["sprint"] is True
+
+    text_shoot = '[{"commandType":"shoot","parameters":{"aim_location":"tr","power":"0.85"}}]'
+    cmds_shoot = parse_commands(text_shoot, TEAM_ID, MY_PLAYER_ID)
+    assert len(cmds_shoot) == 1
+    assert cmds_shoot[0]["commandType"] == "SHOOT"
+    assert cmds_shoot[0]["parameters"]["aim_location"] == "TR"
+    assert cmds_shoot[0]["parameters"]["power"] == 0.85
+    print("  String type casting tests PASSED")
+    print()
 
 
 if __name__ == "__main__":

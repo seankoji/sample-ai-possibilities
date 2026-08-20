@@ -9,6 +9,7 @@ from _bootstrap import setup_lib_path; setup_lib_path(__file__)
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from agent_base import create_agent, create_invoke_handler
 from fallback import build_fallback, DEF_CONFIG
+from rules import RoleRules
 
 app = BedrockAgentCoreApp()
 
@@ -22,13 +23,18 @@ SYSTEM_PROMPT = f"""You are an AI soccer defender controlling ONLY player {MY_PL
 
 ## Your Role — Defender
 - Stay between the ball and your goal to shield the goalkeeper
-- MARK the most dangerous opponent (closest to your goal or carrying the ball)
 - INTERCEPT loose balls in your defensive third
 - PRESS_BALL when an opponent with the ball enters your zone
 - SLIDE_TACKLE as a last resort when an opponent threatens your goal and is close
 - When you win the ball, PASS to the midfielder or a forward — don't dribble upfield
 - Hold your defensive shape; don't chase the ball into the opponent's half
 - Conserve stamina for crucial defensive sprints
+
+## Tactical Priority
+1. INTERCEPT loose balls in your defensive third
+2. PRESS_BALL when opponent enters your half with ball
+3. MARK only if you're not the nearest defender to the ball
+4. Stay in your own half — never cross the halfway line
 
 ## Available Commands (commandType → parameters)
 
@@ -68,10 +74,12 @@ fallback_commands = build_fallback(DEF_CONFIG)
 
 # --- Wire it up ---
 
-agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-lite-v1:0")
+agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-micro-v1:0")
+role_rules = RoleRules(label="DEF", own_half_only=True, may_press=True, shoot_gate=True)
 create_invoke_handler(
     app, agent, MY_PLAYER_ID, POSITION_LABEL, fallback_commands,
     fallback_cfg=DEF_CONFIG,
+    role_rules=role_rules,
 )
 
 if __name__ == "__main__":

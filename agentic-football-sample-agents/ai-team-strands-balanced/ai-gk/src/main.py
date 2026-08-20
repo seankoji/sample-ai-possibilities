@@ -9,6 +9,7 @@ from _bootstrap import setup_lib_path; setup_lib_path(__file__)
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from agent_base import create_agent, create_invoke_handler
 from fallback import build_fallback, GK_CONFIG
+from rules import RoleRules
 
 app = BedrockAgentCoreApp()
 
@@ -28,10 +29,10 @@ SYSTEM_PROMPT = f"""You are an AI soccer goalkeeper controlling ONLY player {MY_
 - Use INTERCEPT when the ball is loose near your box
 - Conserve stamina — avoid sprinting unless absolutely necessary
 
-## Priority
-1. If you have the ball → GK_DISTRIBUTE (THROW to nearest teammate)
-2. If ball is loose near your box → INTERCEPT
-3. Otherwise → MOVE_TO to stay between ball and goal center
+## Tactical Priority
+1. INTERCEPT loose balls in your box
+2. Position between ball and goal
+3. GK_DISTRIBUTE immediately when you have the ball
 
 ## Available Commands (commandType → parameters)
 
@@ -72,9 +73,11 @@ fallback_commands = build_fallback(GK_CONFIG)
 # --- Wire it up ---
 
 agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-micro-v1:0")
+role_rules = RoleRules(label="GK", box_only=True, may_press=False, shoot_gate=True)
 create_invoke_handler(
     app, agent, MY_PLAYER_ID, POSITION_LABEL, fallback_commands,
     fallback_cfg=GK_CONFIG,
+    role_rules=role_rules,
 )
 
 if __name__ == "__main__":

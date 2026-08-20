@@ -9,6 +9,7 @@ from _bootstrap import setup_lib_path; setup_lib_path(__file__)
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from agent_base import create_agent, create_invoke_handler
 from fallback import build_fallback, FWD2_CONFIG
+from rules import RoleRules
 
 app = BedrockAgentCoreApp()
 
@@ -30,6 +31,13 @@ SYSTEM_PROMPT = f"""You are an AI soccer forward controlling ONLY player {MY_PLA
 - Coordinate with Forward 1 — try to stay on the right side
 - PASS to Forward 1 or Midfielder if you're under pressure
 - Sprint when making attacking runs, conserve stamina when tracking back
+
+## Tactical Priority
+1. INTERCEPT loose balls in attacking third
+2. PRESS_BALL high up the pitch when opponent has the ball
+3. SHOOT only when in attacking third (x > 18) and < 2 defenders blocking
+4. Make runs toward opponent goal to receive passes
+5. Only MARK when dropping back to defend
 
 ## Available Commands (commandType → parameters)
 
@@ -69,10 +77,12 @@ fallback_commands = build_fallback(FWD2_CONFIG)
 
 # --- Wire it up ---
 
-agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-lite-v1:0")
+agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-micro-v1:0")
+role_rules = RoleRules(label="FWD2", may_press=True, shoot_gate=True)
 create_invoke_handler(
     app, agent, MY_PLAYER_ID, POSITION_LABEL, fallback_commands,
     fallback_cfg=FWD2_CONFIG,
+    role_rules=role_rules,
 )
 
 if __name__ == "__main__":

@@ -10,36 +10,72 @@ import math
 
 def _player_idx(p: dict) -> int:
     """Numeric index (0-4) from a player dict — new agentId or old playerId."""
-    if "agentId" in p:
+    if not isinstance(p, dict):
+        return 0
+    agent_id = p.get("agentId")
+    if isinstance(agent_id, str):
         try:
-            return int(p["agentId"].rsplit("_", 1)[-1])
+            return int(agent_id.rsplit("_", 1)[-1])
         except (ValueError, IndexError):
+            import re
+            digits = re.findall(r"\d+", agent_id)
+            if digits:
+                return int(digits[-1])
+    pid = p.get("playerId")
+    if pid is not None:
+        try:
+            return int(pid)
+        except (ValueError, TypeError):
             return 0
-    return p.get("playerId", 0)
+    return 0
 
 
 def _is_my_team(p: dict, team_id: int) -> bool:
     """True if player belongs to team_id — new teamCode or old teamId."""
-    if "teamCode" in p:
-        return p["teamCode"] == ("home" if team_id == 0 else "away")
-    return p.get("teamId") == team_id
+    if not isinstance(p, dict):
+        return False
+    tc = p.get("teamCode")
+    if isinstance(tc, str):
+        target = "home" if int(team_id) == 0 else "away"
+        return tc.lower() == target
+    tid = p.get("teamId")
+    if tid is not None:
+        try:
+            return int(tid) == int(team_id)
+        except (ValueError, TypeError):
+            return False
+    return False
 
 
-def _possession_idx(ball: dict):
+def _possession_idx(ball: dict) -> int | None:
     """Numeric possession player index from ball dict — new possessionAgentId or old possessionPlayerId.
     Returns int or None."""
+    if not isinstance(ball, dict) or ball.get("isFree") is True:
+        return None
     agent_id = ball.get("possessionAgentId")
-    if agent_id is not None:
+    if isinstance(agent_id, str) and agent_id and agent_id.lower() not in ("none", "null", "-1"):
         try:
-            return int(agent_id.rsplit("_", 1)[-1])
+            idx = int(agent_id.rsplit("_", 1)[-1])
+            return idx if 0 <= idx <= 4 else None
         except (ValueError, IndexError):
+            import re
+            digits = re.findall(r"\d+", agent_id)
+            if digits:
+                idx = int(digits[-1])
+                return idx if 0 <= idx <= 4 else None
+    pid = ball.get("possessionPlayerId")
+    if pid is not None:
+        try:
+            idx = int(pid)
+            return idx if 0 <= idx <= 4 else None
+        except (ValueError, TypeError):
             return None
-    return ball.get("possessionPlayerId")
+    return None
 
 
 def get_goal_positions(team_id: int) -> tuple[float, float]:
     """Return (my_goal_x, opp_goal_x) based on team."""
-    if team_id == 0:
+    if int(team_id) == 0:
         return -55.0, 55.0
     return 55.0, -55.0
 
@@ -48,7 +84,25 @@ def get_possession_info(ball: dict, players: list, team_id: int) -> tuple:
     """Return (possession_id, ball_status_str, we_have_ball)."""
     possession_id = _possession_idx(ball)
     if possession_id is not None:
-        holder = next((p for p in players if _player_idx(p) == possession_id), None)
+        poss_agent_id = ball.get("possessionAgentId")
+        holder = None
+        if poss_agent_id:
+            holder = next((p for p in players if p.get("agentId") == poss_agent_id), None)
+        if not holder:
+            poss_tc = ball.get("possessionTeamCode")
+            poss_tid = ball.get("possessionTeamId")
+            if poss_tc is not None:
+                holder = next(
+                    (p for p in players if _player_idx(p) == possession_id and str(p.get("teamCode", "")).lower() == str(poss_tc).lower()),
+                    None,
+                )
+            elif poss_tid is not None:
+                holder = next(
+                    (p for p in players if _player_idx(p) == possession_id and _is_my_team(p, poss_tid)),
+                    None,
+                )
+            else:
+                holder = next((p for p in players if _player_idx(p) == possession_id), None)
         if holder:
             is_mine = _is_my_team(holder, team_id)
             side = "MY" if is_mine else "OPP"
@@ -243,7 +297,8 @@ def summarize_state(
     # My player info
     if me:
         pos = me.get("position", {})
-        stam = me.get("stamina", 100)
+        stam_raw = me.get("stamina", 100)
+        stam = stam_raw * 100 if stam_raw <= 1.0 else stam_raw
         dist_ball = dist(pos, ball_pos)
         has_ball = possession_id == my_player_id
         extra = f" distOppGoal={abs(pos.get('x', 0) - opp_goal_x):.1f}" if position_label in ("MID", "FWD1", "FWD2") else ""

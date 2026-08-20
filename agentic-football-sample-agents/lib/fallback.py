@@ -154,6 +154,7 @@ CB_CONFIG = FallbackConfig(
     possession_action="PASS",
     pass_exclude_ids=[0],
     default_x_factor=0.55, default_x_ref="my_goal", default_y=0,
+    support_x_factor=-0.55, support_y=0, support_sprint=False,
     mark_threshold=30.0, mark_tightness="TIGHT",
     clear_when_pressured=True, phase_logic=True,
     press_distance=12.0, press_intensity=0.6,

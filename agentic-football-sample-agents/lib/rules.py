@@ -214,11 +214,11 @@ def sanitize_commands(
                 dist_opp_goal = abs(my_pos.get("x", 0) - opp_goal_x)
                 blockers = shot_blockers(my_pos, opp_goal_x, opponents)
                 effective_max_blockers = rules.max_shot_blockers
-                # Relax blocker threshold when chasing deficit or within 20m of goal (allow 2 blockers)
-                if is_chasing or dist_opp_goal < 20.0:
+                # Relax blocker threshold when chasing deficit or within 18m of goal
+                if is_chasing or dist_opp_goal <= 18.0:
                     effective_max_blockers = max(effective_max_blockers, 3)
 
-                allowed_to_shoot = (in_att_third or dist_opp_goal < 20.0) and (blockers < effective_max_blockers)
+                allowed_to_shoot = in_att_third and (dist_opp_goal <= 28.0) and (blockers < effective_max_blockers)
                 if not allowed_to_shoot:
                     outfield_teammates = [
                         p

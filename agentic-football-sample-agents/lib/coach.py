@@ -71,13 +71,14 @@ def _extract_latest(chat) -> str | None:
     """Pull the newest instruction text from teamChat (str or dict entries)."""
     if not isinstance(chat, list) or not chat:
         return None
-    last = chat[-1]
-    if isinstance(last, str):
-        return last
-    if isinstance(last, dict):
-        for key in ("content", "message", "text", "instruction"):
-            if isinstance(last.get(key), str):
-                return last[key]
+    for entry in reversed(chat):
+        if isinstance(entry, str) and entry.strip():
+            return entry.strip()
+        if isinstance(entry, dict):
+            for key in ("content", "message", "text", "instruction"):
+                val = entry.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
     return None
 
 

@@ -9,6 +9,7 @@ from _bootstrap import setup_lib_path; setup_lib_path(__file__)
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from agent_base import create_agent, create_invoke_handler
 from fallback import build_fallback, MID_CONFIG
+from rules import RoleRules
 
 app = BedrockAgentCoreApp()
 
@@ -29,6 +30,12 @@ SYSTEM_PROMPT = f"""You are an AI soccer midfielder controlling ONLY player {MY_
 - SHOOT from distance if you have a clear sight of goal (within ~25 units)
 - Balance attack and defense — track back when your team loses possession
 - Manage stamina carefully; you cover the most ground
+
+## Tactical Priority
+1. INTERCEPT loose balls in midfield
+2. PRESS_BALL when opponent has ball in middle third
+3. PASS forward to forwards when they're in good positions
+4. Only MARK if you're too far from the ball to press
 
 ## Available Commands (commandType → parameters)
 
@@ -68,10 +75,12 @@ fallback_commands = build_fallback(MID_CONFIG)
 
 # --- Wire it up ---
 
-agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-pro-v1:0")
+agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-micro-v1:0")
+role_rules = RoleRules(label="MID", may_press=True, shoot_gate=True)
 create_invoke_handler(
     app, agent, MY_PLAYER_ID, POSITION_LABEL, fallback_commands,
     fallback_cfg=MID_CONFIG,
+    role_rules=role_rules,
 )
 
 if __name__ == "__main__":
