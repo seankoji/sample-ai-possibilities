@@ -206,15 +206,15 @@ def fast_path_decision(
                     "duration": 3
                 }]
 
-    # Fast path 5: Opponent has ball — ONLY nearest outfield teammate presses; others mark/cut corridors
+    # Fast path 5: Opponent has ball — ONLY nearest outfield teammate presses within 6.5m (prevents overcommitment)
     if possession_id is not None and not we_have_ball and role_rules and getattr(role_rules, "may_press", False):
         ball_carrier = next((p for p in players if _player_idx(p) == possession_id), None)
         if ball_carrier and not _is_my_team(ball_carrier, team_id):
             carrier_pos = ball_carrier.get("position", ball_pos)
             dist_to_carrier = dist(my_pos, carrier_pos)
             i_am_nearest_presser = is_nearest_to_ball(my_pos, my_player_id, my_team, carrier_pos)
-            if i_am_nearest_presser and dist_to_carrier < 10.0:
-                # Single designated presser
+            if i_am_nearest_presser and dist_to_carrier < 6.5:
+                # Single designated presser in tackling range
                 return [{
                     "commandType": "PRESS_BALL",
                     "playerId": my_player_id,
