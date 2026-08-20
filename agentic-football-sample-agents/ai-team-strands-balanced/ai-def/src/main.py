@@ -1,6 +1,6 @@
 """
 AI Soccer Defender Agent — Controls ONLY player 1 (Defender).
-Uses Strands SDK + Amazon Nova Lite.
+Uses Strands SDK + Amazon Nova Micro.
 """
 
 import os, sys; sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib")); sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "lib"))
@@ -43,7 +43,6 @@ ONE-SHOT:
 - PASS: target_player_id (int), type ("GROUND"|"AERIAL"|"THROUGH") — only if you have ball
 - SHOOT: aim_location ("TL"|"TR"|"BL"|"BR"|"CENTER"), power (0.0-1.0) — only if you have ball
 - SLIDE_TACKLE: target_player_id (int), sprint (bool), distance (float) — risky aggressive tackle
-- GK_DISTRIBUTE: target_player_id (int), method ("THROW"|"KICK") — GK only
 
 MAINTAINED:
 - PRESS_BALL: intensity (0.0-1.0) — pressure ball carrier
@@ -53,13 +52,15 @@ MAINTAINED:
 
 TACTICAL:
 - SET_STANCE: stance (0=Balanced, 1=Attack, 2=Defend)
-- CLEAR_OVERRIDE: {{}} — return to default AI
-- RESET: {{}} — clear all overrides for team
+
+Duration: 0 for one-shot commands (MOVE_TO, PASS, SHOOT), 3-5 for maintained commands (PRESS_BALL, MARK, INTERCEPT)
 
 ## Field
 - Coordinates: x roughly -55 to +55, y roughly -35 to +35
 - Team 0 (HOME) defends -x, attacks toward +x
 - Team 1 (AWAY) defends +x, attacks toward -x
+
+Note: These agents are configured for Team 0 (HOME). Spatial thresholds assume defending -x and attacking +x.
 
 ## Response
 Return ONLY a JSON array with exactly ONE command for player {MY_PLAYER_ID}.
@@ -75,7 +76,7 @@ fallback_commands = build_fallback(DEF_CONFIG)
 # --- Wire it up ---
 
 agent = create_agent(SYSTEM_PROMPT, model_id="us.amazon.nova-micro-v1:0")
-role_rules = RoleRules(label="DEF", own_half_only=True, may_press=True, shoot_gate=True)
+role_rules = RoleRules(label="DEF", own_half_only=True, may_press=True, shoot_gate=True, home_y=0.0)
 create_invoke_handler(
     app, agent, MY_PLAYER_ID, POSITION_LABEL, fallback_commands,
     fallback_cfg=DEF_CONFIG,

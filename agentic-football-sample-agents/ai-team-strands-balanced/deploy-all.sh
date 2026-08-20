@@ -75,6 +75,19 @@ echo "  AWS Account: $AWS_ACCOUNT_ID"
 echo "  AWS Region:  $AWS_DEFAULT_REGION"
 echo ""
 
+# ------ Pre-deploy validation tests ------
+# Run local tests for all agents
+echo "Running pre-deploy validation tests..."
+for agent in "${AGENTS[@]}"; do
+  echo "  Testing $agent..."
+  python "$SCRIPT_DIR/$agent/test_local.py" || {
+    echo "ERROR: $agent tests failed. Aborting deployment."
+    exit 1
+  }
+done
+echo "All tests passed."
+echo ""
+
 # ------ Cleanup on exit ------
 cleanup() {
   echo ""

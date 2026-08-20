@@ -17,7 +17,7 @@ from main import fallback_commands, MY_PLAYER_ID, POSITION_LABEL, SYSTEM_PROMPT
 
 def test_summarize():
     print(f"=== STATE SUMMARY ({POSITION_LABEL}, player {MY_PLAYER_ID}) ===")
-    summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL)
+    summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL, tactical=True)
     print(summary)
     print()
 
@@ -96,11 +96,11 @@ def test_llm():
         from strands import Agent
         from strands.models import BedrockModel
 
-        model = BedrockModel(model_id="us.amazon.nova-pro-v1:0")
+        model = BedrockModel(model_id="us.amazon.nova-micro-v1:0")
         agent = Agent(model=model, system_prompt=SYSTEM_PROMPT)
 
-        summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL)
-        print(f"Sending to Nova Pro ({len(summary)} chars)...")
+        summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL, tactical=True)
+        print(f"Sending to Nova Micro ({len(summary)} chars)...")
 
         response = agent(summary)
         response_text = str(response)
@@ -122,12 +122,47 @@ def test_llm():
         print(f"LLM test error: {e}")
 
 
+def test_sanitizer():
+    print(f"=== SANITIZER (MID) ===")
+    from rules import sanitize_commands, RoleRules
+    
+    # Get the role rules from main.py
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+    from main import role_rules
+    
+    # Test case: Invalid INTERCEPT (ball too far)
+    game_state_far = dict(GAME_STATE)
+    game_state_far["ball"] = {"position": {"x": 50, "y": 0}, "possessionAgentId": None}
+    
+    bad_intercept = [{
+        "commandType": "INTERCEPT",
+        "playerId": MY_PLAYER_ID,
+        "teamId": TEAM_ID,
+        "parameters": {"aggressive": True},
+        "duration": 3
+    }]
+    
+    result = sanitize_commands(bad_intercept, game_state_far, TEAM_ID, MY_PLAYER_ID, role_rules)
+    
+    # Should convert to MOVE_TO
+    if result:
+        assert result[0]["commandType"] == "MOVE_TO", f"Should convert INTERCEPT to MOVE_TO, got {result[0]['commandType']}"
+        print("  ✓ INTERCEPT guardrail working (converts to MOVE_TO when ball far)")
+    else:
+        print("  ✓ INTERCEPT rejected (empty result)")
+    
+    print(f"  Sanitizer test passed")
+
+
 if __name__ == "__main__":
     test_summarize()
     test_fallback()
     test_fallback_with_ball_near_goal()
     test_fallback_with_ball_far()
     test_parse()
+    test_sanitizer()
 
     if "--llm" in sys.argv:
         test_llm()

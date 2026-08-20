@@ -73,6 +73,30 @@ def create_invoke_handler(
 
             coach_line, effective_rules = update_coaching(game_state, role_rules)
 
+            # Fast-path: Check for instant programmatic reactions before LLM inference
+            from fast_path import fast_path_decision
+
+            fast_commands = fast_path_decision(
+                game_state, team_id, effective_pid, position_label, effective_rules
+            )
+            
+            if fast_commands is not None:
+                # Instant reaction - no LLM needed (saves 400-600ms)
+                if effective_rules is not None:
+                    from rules import sanitize_commands
+                    fast_commands = sanitize_commands(
+                        fast_commands, game_state, team_id, effective_pid, effective_rules
+                    )
+                
+                if fast_commands:
+                    log.info(
+                        f"Fast-path returned {len(fast_commands)} commands: "
+                        f"{[c.get('commandType') for c in fast_commands]}"
+                    )
+                    yield json.dumps(fast_commands)
+                    return  # Skip LLM inference entirely
+
+            # Complex situation - use LLM inference
             state_summary = (
                 summarize_state(
                     game_state,

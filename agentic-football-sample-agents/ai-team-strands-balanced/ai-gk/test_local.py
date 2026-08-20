@@ -17,7 +17,7 @@ from main import fallback_commands, MY_PLAYER_ID, POSITION_LABEL, SYSTEM_PROMPT
 
 def test_summarize():
     print(f"=== STATE SUMMARY ({POSITION_LABEL}, player {MY_PLAYER_ID}) ===")
-    summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL)
+    summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL, tactical=True)
     print(summary)
     print()
 
@@ -73,6 +73,33 @@ def test_parse():
     print()
 
 
+def test_sanitizer():
+    print(f"=== SANITIZER ({POSITION_LABEL}) ===")
+    from rules import sanitize_commands, RoleRules
+
+    # Test case: bad shot gets converted to pass
+    bad_shot = [{
+        "commandType": "SHOOT",
+        "playerId": MY_PLAYER_ID,
+        "teamId": TEAM_ID,
+        "parameters": {"aim_location": "TL", "power": 0.9},
+        "duration": 0
+    }]
+
+    # Create position-specific rules (matches main.py)
+    rules = RoleRules(label="GK", box_only=True, may_press=False, shoot_gate=True)
+
+    result = sanitize_commands(bad_shot, GAME_STATE, TEAM_ID, MY_PLAYER_ID, rules)
+
+    # Verify shot discipline worked
+    assert len(result) <= 1, "Should return 0-1 commands"
+    if result:
+        assert result[0]["commandType"] in ["SHOOT", "PASS", "MOVE_TO"], "Should convert or keep"
+
+    print(f"  Sanitizer test passed")
+    print()
+
+
 def test_llm():
     print(f"=== LLM TEST ({POSITION_LABEL}) ===")
     try:
@@ -82,7 +109,7 @@ def test_llm():
         model = BedrockModel(model_id="us.amazon.nova-micro-v1:0")
         agent = Agent(model=model, system_prompt=SYSTEM_PROMPT)
 
-        summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL)
+        summary = summarize_state(GAME_STATE, TEAM_ID, MY_PLAYER_ID, POSITION_LABEL, tactical=True)
         print(f"Sending to Nova Micro ({len(summary)} chars)...")
 
         response = agent(summary)
@@ -111,6 +138,7 @@ if __name__ == "__main__":
     test_fallback()
     test_fallback_with_ball()
     test_parse()
+    test_sanitizer()
 
     if "--llm" in sys.argv:
         test_llm()

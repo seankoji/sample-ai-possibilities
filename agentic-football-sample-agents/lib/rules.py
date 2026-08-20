@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from state import (
     _player_idx,
     _is_my_team,
+    _possession_idx,
     get_goal_positions,
     get_possession_info,
     dist,
@@ -198,6 +199,20 @@ def sanitize_commands(
                 # Nearest player allowed to press — elevate intensity if chasing deficit
                 if is_chasing and cmd_type == "PRESS_BALL":
                     params["intensity"] = min(1.0, max(float(params.get("intensity", 0.7)), 0.9))
+
+        # Rule 2b: INTERCEPT guardrail — only viable when ball is free and close
+        if cmd_type == "INTERCEPT":
+            ball_is_free = (_possession_idx(ball) is None)
+            dist_to_ball = dist(my_pos, ball_pos)
+            if not ball_is_free or dist_to_ball > 15.0:
+                # Ball not free or too far - move toward it instead
+                cmd_type = "MOVE_TO"
+                params = {
+                    "target_x": ball_pos.get("x", 0),
+                    "target_y": ball_pos.get("y", 0),
+                    "sprint": (dist_to_ball > 10.0)
+                }
+                duration = 0
 
         # Rule 3: Shot discipline & Dynamic Far-Post Aiming
         if cmd_type == "SHOOT":
