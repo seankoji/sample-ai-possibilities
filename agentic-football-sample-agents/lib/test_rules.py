@@ -216,9 +216,9 @@ def test_role_boundaries():
     cmds_st = [{"commandType": "MOVE_TO", "parameters": {"target_x": 48.0, "target_y": 15.0, "sprint": True}}]
     sanitized_st = sanitize_commands(cmds_st, GAME_STATE, TEAM_ID, 4, st_rules)
     assert len(sanitized_st) == 1
-    assert sanitized_st[0]["parameters"]["target_x"] == 48.0, "ST permitted in Zones 11, 14, 17 (18-yard box)"
-    assert sanitized_st[0]["parameters"]["target_y"] == 2.0, "ST target_y clamped to central corridor"
-    print("  ST 18-yard box entry permitted in Zone 17, central corridor (|y| <= 2.0)")
+    assert sanitized_st[0]["parameters"]["target_x"] == 44.0, "ST clamped to 44 (out of 6-yard box)"
+    assert sanitized_st[0]["parameters"]["target_y"] == 5.0, "ST target_y clamped to central corridor"
+    print("  ST clamped at x=44 (never enters 6-yard box)")
 
     # LM: left channel bounds (Zones 4, 7, 10, 13, 16: y in [-7.0, -3.0], |x| <= 48.0)
     lm_rules = RoleRules(label="LM", own_half_only=False, may_press=True, shoot_gate=True, home_y=-8.0)

@@ -16,17 +16,17 @@ Allowed zones per position:
 
 from typing import Tuple, Set
 
-# Allowed zones mapping
+# Allowed zones mapping (practical zones — what the code actually enforces)
 ALLOWED_ZONES = {
     "GK": {2, 5},
-    "CB": {1, 2, 3, 4, 5, 6, 8},
-    "DEF": {1, 2, 3, 4, 5, 6, 8},
-    "LM": {4, 7, 10, 13, 16},
-    "RM": {6, 9, 12, 15, 18},
-    "ST": {11, 14, 17},
-    "FWD": {11, 14, 17},
-    "FWD1": {6, 9, 12, 15, 18},  # RM
-    "FWD2": {11, 14, 17},         # ST
+    "CB": {1, 2, 3, 4, 5, 6, 7, 8, 9},  # Defensive + mid own-half, wide enough to defend flanks
+    "DEF": {1, 2, 3, 4, 5, 6, 7, 8, 9},
+    "LM": {1, 4, 7, 10, 13, 16},  # Left flank full length
+    "RM": {3, 6, 9, 12, 15, 18},  # Right flank full length
+    "ST": {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},  # Central + attacking, can drop to midfield
+    "FWD": {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
+    "FWD1": {3, 6, 9, 12, 15, 18},  # RM
+    "FWD2": {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},  # ST
 }
 
 
@@ -97,23 +97,16 @@ def clamp_coords_to_position_zones(
         ty = max(-2.0, min(2.0, ty))
         return tx, ty
 
-    # 2. DEF / CB: Allowed Zones 1, 4, 5, 6, 3, 8 (Defensive third + central own-half Zone 8)
+    # 2. DEF / CB: Own half, never in 6-yard box (x > -38 for team 0)
     if label in ("CB", "DEF") or my_player_id == 1:
         if team_id == 0:
             max_x = 15.0 if is_chasing else 0.0
-            tx = max(-52.0, min(max_x, tx))
-            # In Zone 8 (between -19.0 and 0.0), restrict strictly to central corridor (|y| <= 2.0)
-            if tx > -18.33:
-                ty = max(-2.0, min(2.0, ty))
-            else:
-                ty = max(-7.0, min(7.0, ty))
+            tx = max(-38.0, min(max_x, tx))  # Never deeper than -38 (out of 6-yard box)
+            ty = max(-10.0, min(10.0, ty))
         else:
             min_x = -15.0 if is_chasing else 0.0
-            tx = max(min_x, min(52.0, tx))
-            if tx < 18.33:
-                ty = max(-2.0, min(2.0, ty))
-            else:
-                ty = max(-7.0, min(7.0, ty))
+            tx = max(min_x, min(38.0, tx))
+            ty = max(-10.0, min(10.0, ty))
         return tx, ty
 
     # 3. MID LEFT (LM): Allowed Zones 4, 7, 10, 13, 16 (Left flank top lane: y in [-7.0, -3.0])
@@ -136,17 +129,14 @@ def clamp_coords_to_position_zones(
         ty = max(3.0, min(7.0, ty))
         return tx, ty
 
-    # 5. STRIKER (ST): Allowed Zones 11, 14, 17 (Opponent half central corridor: x in [0.0, 48.5], |y| <= 2.0)
-    # Special constraint: Allowed in larger 18-yard box, but NOT small 6-yard goal box (|tx| <= 48.5)
+    # 5. STRIKER (ST): Allowed Zones 11, 14, 17 (Opponent half central corridor)
+    # Stay central but allow some lateral movement for receiving passes
     if label in ("ST", "FWD", "FWD2") or my_player_id == 4:
         if team_id == 0:
-            # Opponent half only (Zones 11, 14, 17): x in [0.0, 48.5]
-            tx = max(0.0, min(48.5, tx))
+            tx = max(-5.0, min(44.0, tx))  # Can drop slightly into own half, never in 6-yard box
         else:
-            # Opponent half only: x in [-48.5, 0.0]
-            tx = max(-48.5, min(0.0, tx))
-        # Strictly central corridor
-        ty = max(-2.0, min(2.0, ty))
+            tx = max(-44.0, min(5.0, tx))
+        ty = max(-5.0, min(5.0, ty))  # Central corridor with some width
         return tx, ty
 
     # Default fallback

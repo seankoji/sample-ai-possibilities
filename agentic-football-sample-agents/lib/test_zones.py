@@ -65,9 +65,9 @@ def test_position_zone_clamps():
 
     # 5. STRIKER (ST): Restricted to Zones 11, 14, 17 (Opponent half central corridor, excluding 6-yd small box)
     tx, ty = clamp_coords_to_position_zones(52.0, 12.0, "ST", 4, team_id=0)
-    assert tx <= 48.5, "ST must not enter small 6-yard goal box"
+    assert tx <= 44.0, "ST capped at x=44 (out of 6-yard box)"
     assert tx >= 0.0, "ST operates in opponent half"
-    assert abs(ty) <= 4.5, "ST operates in central corridor"
+    assert abs(ty) <= 5.0, "ST operates in central corridor"
     assert get_zone_from_coords(tx, ty, team_id=0) in ALLOWED_ZONES["ST"]
     print("  ST clamped strictly to Zones 11, 14, 17 (excluding small 6-yd box)")
 

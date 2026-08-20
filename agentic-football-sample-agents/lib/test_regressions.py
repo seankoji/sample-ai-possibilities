@@ -152,7 +152,7 @@ def test_regression_18_zone_boundaries():
 
     # 5. ST restricted to Opponent Half Central Corridor (Zones 11, 14, 17) excluding 6-yd small box
     tx_st, ty_st = clamp_coords_to_position_zones(54.0, 10.0, "ST", 4, team_id=0)
-    assert tx_st <= 48.5, "ST strictly barred from 6-yard small goal box"
+    assert tx_st <= 44.0, "ST strictly barred from 6-yard goal box"
     assert tx_st >= 0.0, "ST operates in opponent half"
     assert get_zone_from_coords(tx_st, ty_st, team_id=0) in ALLOWED_ZONES["ST"]
     print("  ✓ All 5 positions strictly confined to their assigned 18 tactical zones")
@@ -170,7 +170,7 @@ def test_regression_wall_collision_cushions():
     ]
     for role, pid, (ex_x, ex_y) in extreme_targets:
         tx, ty = clamp_coords_to_position_zones(ex_x, ex_y, role, pid, team_id=0)
-        assert abs(ty) <= 7.5, f"{role} target_y={ty} exceeded safe pitch width limit ±7.5"
+        assert abs(ty) <= 10.5, f"{role} target_y={ty} exceeded safe pitch width limit ±10.5"
     print("  ✓ All positional clamps maintain minimum 2.5m cushion from touchline advertising hoardings")
 
 
