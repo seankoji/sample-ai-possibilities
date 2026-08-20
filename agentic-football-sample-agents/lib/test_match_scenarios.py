@@ -317,7 +317,23 @@ def test_scenario_gk_possession_outfield_runs_and_long_kick():
     assert cmd_gk is not None and cmd_gk[0]["commandType"] == "GK_DISTRIBUTE"
     assert cmd_gk[0]["parameters"]["method"] == "KICK", "GK must KICK long when >= 3 opponents are in our half"
     assert cmd_gk[0]["parameters"]["target_player_id"] == 4, "GK must target forward player upfield"
-    print("✓ Scenario 13: GK possession outfield runs & long kick verified")
+def test_scenario_striker_inside_box_instant_shoot():
+    """Scenario 14: Striker receives ball inside the box -> immediately shoots at best far-post path."""
+    game_state = {
+        "ball": {"position": {"x": 42, "y": -4}, "possessionAgentId": "agentId_4"},  # Inside box (x=42, y=-4)
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 42, "y": -4}, "stamina": 90},
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 52, "y": -2}, "stamina": 100},  # Opp GK at y=-2
+        ],
+    }
+    
+    cmd = fast_path_decision(game_state, 0, 4, "ST", None)
+    assert cmd is not None, "Striker inside box must trigger instant fast-path shoot"
+    assert cmd[0]["commandType"] == "SHOOT"
+    assert cmd[0]["parameters"]["aim_location"] == "TR", "Must shoot at far-post (TR when GK is at y < 0)"
+    assert cmd[0]["parameters"]["power"] >= 0.90
+    print("✓ Scenario 14: Striker inside box instant far-post shoot verified")
 
 
 if __name__ == "__main__":
@@ -334,4 +350,5 @@ if __name__ == "__main__":
     test_scenario_rebound_crashing_and_rest_defense()
     test_scenario_overload_field_switch()
     test_scenario_gk_possession_outfield_runs_and_long_kick()
-    print("\nAll 13 match scenario regression tests PASSED!")
+    test_scenario_striker_inside_box_instant_shoot()
+    print("\nAll 14 match scenario regression tests PASSED!")

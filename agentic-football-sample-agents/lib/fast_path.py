@@ -338,6 +338,27 @@ def _fast_path_with_ball(
                     "duration": 0
                 }]
 
+    # STRIKER INSIDE BOX: If striker receives the ball inside the box, IMMEDIATELY SHOOT at the best path to goal!
+    is_in_box = (abs(my_pos.get("x", 0) - opp_goal_x) <= 22.0) and (abs(my_pos.get("y", 0)) <= 16.0)
+    if position_label in ("ST", "FWD", "FWD1", "FWD2") and is_in_box:
+        opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+        if opp_gk:
+            gk_y = opp_gk.get("position", {}).get("y", 0.0)
+            aim = "TR" if gk_y < 0 else "TL"
+        else:
+            my_y = my_pos.get("y", 0)
+            aim = "TR" if my_y < 0 else "TL"
+        return [{
+            "commandType": "SHOOT",
+            "playerId": my_player_id,
+            "teamId": team_id,
+            "parameters": {
+                "aim_location": aim,
+                "power": 0.9
+            },
+            "duration": 0
+        }]
+
     # Defender under pressure in own third → instant aerial clearance to flank
     in_own_third = (my_pos.get("x", 0) < -55.0 / 3.0) if team_id == 0 else (my_pos.get("x", 0) > 55.0 / 3.0)
     nearest_opp_dist = min(
