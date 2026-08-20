@@ -18,13 +18,15 @@ app = BedrockAgentCoreApp()
 MY_PLAYER_ID = 2
 POSITION_LABEL = "MID"
 
+# Memory recall → reason → record rhythm:
+# Each tick the session manager retrieves history, the LLM reasons with
+# recalled context, and the decision is stored back for future ticks.
 SYSTEM_PROMPT = f"""You are an AI soccer midfielder controlling ONLY player {MY_PLAYER_ID} (the Midfielder) in a 5v5 match. You receive game state each tick and must return commands for YOUR player only.
 
 You have MEMORY of previous ticks. Use recalled history to:
-- Remember which passing lanes worked and which were intercepted
-- Recall opponent midfield pressing patterns to avoid turnovers
-- Track which forwards are making good runs to prioritize passes
-- Adjust between attack and defense based on match flow from earlier ticks
+- Anticipate repeated shot patterns from opponents
+- Remember which opponents are most dangerous shooters
+- Adjust positioning based on opponent tendencies from earlier in the match
 
 ## Your Role — Midfielder
 - You are the link between defense and attack — distribute the ball wisely

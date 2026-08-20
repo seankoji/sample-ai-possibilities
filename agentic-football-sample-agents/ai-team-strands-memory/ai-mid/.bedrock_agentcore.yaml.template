@@ -26,7 +26,8 @@ agents:
         idle_runtime_session_timeout: null
         max_lifetime: null
     memory:
-      mode: NO_MEMORY
+      mode: MEMORY
+      memory_id: "${MEMORY_ID}"
     identity:
       credential_providers: []
       workload: null

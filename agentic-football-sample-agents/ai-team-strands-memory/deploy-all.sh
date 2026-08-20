@@ -68,6 +68,13 @@ if ! command -v agentcore &> /dev/null; then
 fi
 echo "  agentcore CLI: OK"
 
+if ! command -v rsync &> /dev/null; then
+  echo "ERROR: 'rsync' not found."
+  echo "Install: brew install rsync (macOS) or apt-get install rsync (Linux)"
+  exit 1
+fi
+echo "  rsync: OK"
+
 if ! command -v aws &> /dev/null; then
   echo "ERROR: 'aws' CLI not found."
   exit 1
@@ -128,8 +135,7 @@ for agent in "${AGENTS[@]}"; do
     continue
   fi
   mkdir -p "$STAGE/lib"
-  cp "$LIB_SRC"/*.py "$STAGE/lib/"
-  find "$STAGE/lib" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+  rsync -a --exclude='__pycache__' --exclude='*.pyc' "$LIB_SRC/" "$STAGE/lib/"
 
   # Copy memory_agent_base.py (team-level shared module)
   cp "$SCRIPT_DIR/memory_agent_base.py" "$STAGE/memory_agent_base.py"
@@ -141,6 +147,7 @@ for agent in "${AGENTS[@]}"; do
   sed \
     -e "s|\${AWS_ACCOUNT_ID}|$AWS_ACCOUNT_ID|g" \
     -e "s|\${AWS_DEFAULT_REGION}|$AWS_DEFAULT_REGION|g" \
+    -e "s|\${MEMORY_ID}|$MEMORY_ID|g" \
     "$AGENT_SRC/.bedrock_agentcore.yaml.template" > "$STAGE/.bedrock_agentcore.yaml"
 
   echo "  Deploying from: $STAGE"

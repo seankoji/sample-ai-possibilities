@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from test_helpers import mock_agentcore_memory, GAME_STATE, TEAM_ID
+# For real Memory testing, set: export MEMORY_ID=mem-xxxxxxxxxxxxxxxx
 os.environ.setdefault("MEMORY_ID", "test-memory-id")
 os.environ.setdefault("TEAM_ID", str(TEAM_ID))
 mock_agentcore_memory()
@@ -53,9 +54,50 @@ def test_parse():
     print()
 
 
+def test_llm():
+    print("=== LLM + MEMORY TEST ===")
+    # Check AWS credentials are available
+    import boto3
+    try:
+        session = boto3.session.Session()
+        sts = session.client("sts")
+        identity = sts.get_caller_identity()
+        print(f"  AWS credentials OK — account: {identity['Account']}")
+    except Exception as e:
+        print(f"  WARNING: AWS credentials not available ({e})")
+        print("  LLM test may fail. Configure AWS credentials and retry.")
+
+    memory_id = os.environ.get("MEMORY_ID", "not set")
+    if memory_id == "test-memory-id" or memory_id == "not set":
+        print("  NOTE: MEMORY_ID is not set to a real memory resource.")
+        print("        For real Memory recall, set: export MEMORY_ID=mem-xxxxxxxxxxxxxxxx")
+        print("        Falling back to mock memory for this test.")
+    else:
+        print(f"  MEMORY_ID = {memory_id}")
+
+    mock_game_state_msg = (
+        "Tick 42 | GK defending. Ball at centre (50,34). "
+        "Opponent FWD at (18,34) threatening. Score 0-0. "
+        "Decide: stay on line or rush out?"
+    )
+    print(f"  Invoking agent with: '{mock_game_state_msg}'")
+
+    try:
+        from main import agent
+        response = agent(mock_game_state_msg, GAME_STATE, TEAM_ID, MY_PLAYER_ID)
+        print(f"  Raw response: {response}")
+    except Exception as e:
+        print(f"  Agent invocation error: {e}")
+    print()
+
+
 if __name__ == "__main__":
-    test_summarize()
-    test_fallback()
-    test_parse()
-    print("Memory agent local tests passed (no LLM/Memory calls).")
-    print("Deploy to AgentCore to test with actual Memory integration.")
+    if "--llm" in sys.argv:
+        test_llm()
+    else:
+        test_summarize()
+        test_fallback()
+        test_parse()
+        print("Memory agent local tests passed (no LLM/Memory calls).")
+        print(f"  Tip: MEMORY_ID env = {os.environ.get('MEMORY_ID', 'not set')}")
+        print("  Run with --llm to test the full LLM + Memory path (needs AWS credentials).")

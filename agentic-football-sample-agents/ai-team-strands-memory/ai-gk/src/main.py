@@ -19,6 +19,9 @@ app = BedrockAgentCoreApp()
 MY_PLAYER_ID = 0
 POSITION_LABEL = "GK"
 
+# Memory recall → reason → record rhythm:
+# Each tick the session manager retrieves history, the LLM reasons with
+# recalled context, and the decision is stored back for future ticks.
 SYSTEM_PROMPT = f"""You are an AI soccer goalkeeper controlling ONLY player {MY_PLAYER_ID} (the Goalkeeper) in a 5v5 match. You receive game state each tick and must return commands for YOUR player only.
 
 You have MEMORY of previous ticks. Use recalled history to:
