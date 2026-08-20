@@ -144,9 +144,9 @@ def test_teammate_with_ball_shape_support():
     }
     result_mid = fast_path_decision(game_state_mid, 0, 1, "CB", RoleRules(label="CB", own_half_only=True))
     assert result_mid is not None
-    assert result_mid[0]["parameters"]["target_x"] == -55.0 * 0.65
+    assert result_mid[0]["parameters"]["target_x"] == -55.0 * 0.50
 
-    # 2. Attacking third possession -> CB steps to 0.55 rest-defense anchor
+    # 2. Attacking third possession -> CB steps to 0.35 rest-defense anchor
     game_state_att = {
         "ball": {"position": {"x": 25, "y": 10}, "possessionAgentId": "agentId_2"},
         "players": [
@@ -157,7 +157,7 @@ def test_teammate_with_ball_shape_support():
     }
     result_att = fast_path_decision(game_state_att, 0, 1, "CB", RoleRules(label="CB", own_half_only=True))
     assert result_att is not None
-    assert result_att[0]["parameters"]["target_x"] == -55.0 * 0.55
+    assert result_att[0]["parameters"]["target_x"] == -55.0 * 0.35
     print("✓ Teammate in possession shape support & rest-defense anchor")
 
 

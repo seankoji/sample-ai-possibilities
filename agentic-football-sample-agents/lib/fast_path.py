@@ -64,7 +64,8 @@ def fast_path_decision(
     score_diff = get_score_diff(game_state, team_id)
     game_time = float(game_state.get("gameTime", 0) or 0)
     is_protecting_lead = (score_diff >= 2) or (score_diff >= 1 and game_time > 120.0)
-    cb_anchor_x = my_goal_x * (0.75 if is_protecting_lead else 0.65)
+    ball_in_opp_half = (ball_pos.get("x", 0) > 0 if team_id == 0 else ball_pos.get("x", 0) < 0)
+    cb_anchor_x = my_goal_x * 0.35 if ball_in_opp_half else (my_goal_x * 0.55 if is_protecting_lead else my_goal_x * 0.50)
 
     # Fast path 0: Kickoff formation positioning & compact defensive wall
     play_mode = str(game_state.get("playMode", "")).upper()
@@ -72,7 +73,7 @@ def fast_path_decision(
         if position_label == "GK" or my_player_id == 0:
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.95, "target_y": 0.0, "sprint": False}, "duration": 0}]
         elif position_label in ("CB", "DEF"):
-            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": cb_anchor_x, "target_y": 0.0, "sprint": False}, "duration": 0}]
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.50, "target_y": 0.0, "sprint": False}, "duration": 0}]
         elif position_label == "LM":
             target_x = my_goal_x * (0.35 if is_protecting_lead else 0.25)
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": -15.0, "sprint": False}, "duration": 0}]
@@ -130,8 +131,8 @@ def fast_path_decision(
                 "duration": 0
             }]
         elif position_label in ("CB", "DEF"):
-            # Rest-Defense Anchor: Hold compact shape in own half
-            cb_x = my_goal_x * (0.55 if in_attack else (0.75 if is_protecting_lead else 0.65))
+            # Rest-Defense Anchor: 25% up the pitch (my_goal_x * 0.50) or 0.35 in attack
+            cb_x = my_goal_x * 0.35 if in_attack else cb_anchor_x
             return [{
                 "commandType": "MOVE_TO",
                 "playerId": my_player_id,

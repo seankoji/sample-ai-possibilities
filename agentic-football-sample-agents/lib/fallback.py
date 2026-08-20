@@ -99,7 +99,7 @@ GK_CONFIG = FallbackConfig(
 DEF_CONFIG = FallbackConfig(
     possession_action="PASS",
     pass_exclude_ids=[0],  # don't pass back to GK
-    default_x_factor=0.6, default_x_ref="my_goal", default_y=0,
+    default_x_factor=0.50, default_x_ref="my_goal", default_y=0,
     mark_threshold=30.0, mark_tightness="TIGHT",
     phase_logic=True,
     default_stance=2,
@@ -158,8 +158,8 @@ GK_DIAMOND_CONFIG = FallbackConfig(
 CB_CONFIG = FallbackConfig(
     possession_action="PASS",
     pass_exclude_ids=[0],
-    default_x_factor=0.70, default_x_ref="my_goal", default_y=0,
-    support_x_factor=-0.70, support_y=0, support_sprint=False,
+    default_x_factor=0.50, default_x_ref="my_goal", default_y=0,
+    support_x_factor=-0.50, support_y=0, support_sprint=False,
     mark_threshold=30.0, mark_tightness="TIGHT",
     clear_when_pressured=True, phase_logic=True,
     press_distance=8.0, press_intensity=0.5,

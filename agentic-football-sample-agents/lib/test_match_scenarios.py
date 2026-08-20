@@ -54,10 +54,10 @@ def test_scenario_kickoff_rapid_lock():
     assert cmd_gk is not None and cmd_gk[0]["commandType"] == "MOVE_TO"
     assert cmd_gk[0]["parameters"]["target_x"] == -55.0 * 0.95
 
-    # Verify CB
+    # Verify CB (25% up pitch from goal)
     cmd_cb = fast_path_decision(game_state, 0, 1, "CB")
     assert cmd_cb is not None and cmd_cb[0]["commandType"] == "MOVE_TO"
-    assert cmd_cb[0]["parameters"]["target_x"] == -55.0 * 0.65
+    assert cmd_cb[0]["parameters"]["target_x"] == -55.0 * 0.50
 
     # Verify ST
     cmd_st = fast_path_decision(game_state, 0, 4, "ST")
