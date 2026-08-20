@@ -139,6 +139,18 @@ def fast_path_decision(
                 target_y = 0.0 if position_label in ("ST", "FWD") else (-6.0 if position_label == "FWD1" else 6.0)
                 return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.62, "target_y": target_y, "sprint": can_sprint}, "duration": 0}]
 
+    # Fast path 2b: Turnover Gegenpressing (3-second immediate counter-press on turnover)
+    if adaptive and adaptive.gegenpress_active and my_player_id != 0:
+        nearest = is_nearest_to_ball(my_pos, my_player_id, my_team, ball_pos)
+        if nearest and dist(my_pos, ball_pos) < 9.0:
+            return [{
+                "commandType": "PRESS_BALL",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {"intensity": 1.0},
+                "duration": 2
+            }]
+
     # Fast path 3: Teammate has ball → Receiving on Goalbox Corners / Opposition Half on GK (<5ms)
     _, _, we_have_ball = get_possession_info(ball, players, team_id)
     if we_have_ball and possession_id != my_player_id:
@@ -465,22 +477,55 @@ def _fast_path_with_ball(
                 "duration": 0
             }]
 
-    # Winger on deep flank in attacking third (|y| >= 16) → aerial cross into box for central forward
+    # 1. Winger on deep flank in attacking third (|y| >= 16) → aerial cross into box for central forward
     if position_label in ("LM", "RM", "MID", "FWD1") and is_attacking_third(my_pos.get("x", 0), team_id) and abs(my_pos.get("y", 0)) >= 16.0:
-        st = next((p for p in my_team if _player_idx(p) in (3, 4) and _player_idx(p) != my_player_id), None)
-        if st:
-            st_pos = st.get("position", {})
+        st_cross = next((p for p in my_team if _player_idx(p) in (3, 4) and _player_idx(p) != my_player_id), None)
+        if st_cross:
+            st_pos = st_cross.get("position", {})
             if abs(st_pos.get("x", 0) - opp_goal_x) < 25.0 and abs(st_pos.get("y", 0)) < 15.0:
                 return [{
                     "commandType": "PASS",
                     "playerId": my_player_id,
                     "teamId": team_id,
                     "parameters": {
-                        "target_player_id": _player_idx(st),
+                        "target_player_id": _player_idx(st_cross),
                         "type": "AERIAL"
                     },
                     "duration": 0
                 }]
+
+    # 2. Danger Zone 14 Cutback: From attacking half-space (10 <= |y| < 16, |dx| <= 22), cut back along deck to central box edge
+    if 10.0 <= abs(my_pos.get("y", 0)) < 16.0 and abs(my_pos.get("x", 0) - opp_goal_x) <= 22.0:
+        central_target = next((p for p in my_team if _player_idx(p) in (4, 2, 3) and _player_idx(p) != my_player_id and abs(p.get("position", {}).get("y", 0)) < 10.0), None)
+        if central_target and not is_lane_blocked(my_pos, central_target.get("position", {}), opponents, clearance=1.5):
+            return [{
+                "commandType": "PASS",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "target_player_id": _player_idx(central_target),
+                    "type": "GROUND"
+                },
+                "duration": 0
+            }]
+
+    # 3. Line-Breaking Through Ball (Fisher-Jenks): When building up and Striker breaks behind or level with opponent backline
+    outfield_opps = [p for p in opponents if _player_idx(p) != 0]
+    st = next((p for p in my_team if _player_idx(p) in (4, 3) and _player_idx(p) != my_player_id), None)
+    if st and outfield_opps and position_label in ("LM", "RM", "MID", "CB", "DEF"):
+        deepest_opp_to_goal = min([abs(p.get("position", {}).get("x", 0) - opp_goal_x) for p in outfield_opps])
+        st_dist_to_goal = abs(st.get("position", {}).get("x", 0) - opp_goal_x)
+        if st_dist_to_goal <= deepest_opp_to_goal + 3.0 and not is_lane_blocked(my_pos, st.get("position", {}), opponents, clearance=1.8):
+            return [{
+                "commandType": "PASS",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "target_player_id": _player_idx(st),
+                    "type": "THROUGH"
+                },
+                "duration": 0
+            }]
 
     # Any attacking player (ST/FWD/LM/RM/MID) in shooting range (<26m, |y| < 16) with <= 2 blockers → instant far-post shoot
     dist_to_opp_goal = dist(my_pos, {"x": opp_goal_x, "y": 0.0})

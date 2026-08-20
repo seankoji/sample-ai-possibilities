@@ -332,7 +332,41 @@ def test_scenario_striker_inside_box_instant_shoot():
     assert cmd is not None, "Striker inside box must trigger instant fast-path shoot"
     assert cmd[0]["parameters"]["aim_location"] in ("TR", "BR"), "Must shoot at far-post (TR/BR when GK is at y < 0)"
     assert cmd[0]["parameters"]["power"] >= 0.90
-    print("✓ Scenario 14: Striker inside box instant far-post shoot verified")
+def test_scenario_line_breaking_through_pass():
+    """Scenario 15: Line-breaking pass when ST breaks level with opponent backline."""
+    game_state = {
+        "ball": {"position": {"x": 10, "y": -12}, "possessionAgentId": "agentId_2"}, # LM on ball
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 10, "y": -12}},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 30, "y": 0}},  # ST breaking behind
+            # Opponent backline at x=28
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 28, "y": -5}},
+            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": 28, "y": 5}},
+        ],
+    }
+    cmd = fast_path_decision(game_state, 0, 2, "LM", None)
+    assert cmd is not None and cmd[0]["commandType"] == "PASS"
+    assert cmd[0]["parameters"]["type"] == "THROUGH"
+    assert cmd[0]["parameters"]["target_player_id"] == 4
+    print("✓ Scenario 15: Line-breaking through pass verified")
+
+
+def test_scenario_danger_zone_14_cutback():
+    """Scenario 16: Winger in half-space cuts back along deck to central box edge."""
+    game_state = {
+        "ball": {"position": {"x": 45, "y": -14}, "possessionAgentId": "agentId_2"}, # LM in half-space
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 45, "y": -14}},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 34, "y": 0}},   # ST central zone 14
+        ],
+    }
+    cmd = fast_path_decision(game_state, 0, 2, "LM", None)
+    assert cmd is not None and cmd[0]["commandType"] == "PASS"
+    assert cmd[0]["parameters"]["type"] == "GROUND"
+    assert cmd[0]["parameters"]["target_player_id"] == 4
+    print("✓ Scenario 16: Danger Zone 14 cutback verified")
 
 
 if __name__ == "__main__":
@@ -350,4 +384,6 @@ if __name__ == "__main__":
     test_scenario_overload_field_switch()
     test_scenario_gk_possession_outfield_runs_and_long_kick()
     test_scenario_striker_inside_box_instant_shoot()
-    print("\nAll 14 match scenario regression tests PASSED!")
+    test_scenario_line_breaking_through_pass()
+    test_scenario_danger_zone_14_cutback()
+    print("\nAll 16 match scenario regression tests PASSED!")

@@ -27,6 +27,7 @@ class AdaptiveTactics:
     # Press & Build-up Modulation
     direct_counter_mode: bool = False
     box_edge_sniping: bool = False
+    gegenpress_active: bool = False
     
     # Positional Shifts
     defensive_line_shift_y: float = 0.0
@@ -49,6 +50,8 @@ class TacticalMemoryTracker:
         self.right_flank_attacks = 0
         self.gk_sweeper_ticks = 0
         self.swarm_ticks = 0
+        self.last_possession_team = None
+        self.gegenpress_ticks_remaining = 0
         
     def reset(self):
         self.history_len = 0
@@ -58,6 +61,8 @@ class TacticalMemoryTracker:
         self.right_flank_attacks = 0
         self.gk_sweeper_ticks = 0
         self.swarm_ticks = 0
+        self.last_possession_team = None
+        self.gegenpress_ticks_remaining = 0
 
     def record_tick(self, game_state: dict, team_id: int):
         """Observe opponent positioning and update rolling metrics."""
@@ -108,11 +113,29 @@ class TacticalMemoryTracker:
             if opps_near >= 2:
                 self.swarm_ticks += 1
 
+        # 6. Turnover Gegenpress Tracking (3-second immediate counter-press on turnover)
+        current_possession_team = None
+        poss_id = ball.get("possessionAgentId")
+        if poss_id is not None:
+            carrier = next((p for p in players if _player_idx(p) == poss_id), None)
+            if carrier:
+                current_possession_team = 0 if _is_my_team(carrier, 0) else 1
+
+        if self.last_possession_team == team_id and current_possession_team is not None and current_possession_team != team_id:
+            self.gegenpress_ticks_remaining = 3
+        elif self.gegenpress_ticks_remaining > 0:
+            self.gegenpress_ticks_remaining -= 1
+
+        if current_possession_team is not None:
+            self.last_possession_team = current_possession_team
+
     def compute_tactics(self, game_state: dict, team_id: int) -> AdaptiveTactics:
         """Compute the live adaptation coefficients based on rolling memory."""
         tactics = AdaptiveTactics()
         score_diff = get_score_diff(game_state, team_id)
         game_time = float(game_state.get("gameTime", 0) or 0)
+        
+        tactics.gegenpress_active = (self.gegenpress_ticks_remaining > 0)
         
         # 1. Match Momentum & Formation Morphing
         if game_time > 120.0 and score_diff <= -1:
