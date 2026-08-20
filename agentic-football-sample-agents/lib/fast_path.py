@@ -366,29 +366,45 @@ def _fast_path_with_ball(
                 "duration": 0
             }]
 
-    # Forward in attacking third with clear shot → instant far-post shoot
-    if position_label in ("FWD1", "FWD2", "FWD", "ST"):
-        in_att_third = is_attacking_third(my_pos.get("x", 0), team_id)
-        if in_att_third:
-            blockers = shot_blockers(my_pos, opp_goal_x, opponents)
-            if blockers < 2:
-                opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
-                if opp_gk:
-                    gk_y = opp_gk.get("position", {}).get("y", 0.0)
-                    aim = "TR" if gk_y < 0 else "TL"
-                else:
-                    my_y = my_pos.get("y", 0)
-                    aim = "TR" if my_y < 0 else "TL"
+    # Winger on deep flank in attacking third (|y| >= 16) → aerial cross into box for central forward
+    if position_label in ("LM", "RM", "MID", "FWD1") and is_attacking_third(my_pos.get("x", 0), team_id) and abs(my_pos.get("y", 0)) >= 16.0:
+        st = next((p for p in my_team if _player_idx(p) in (3, 4) and _player_idx(p) != my_player_id), None)
+        if st:
+            st_pos = st.get("position", {})
+            if abs(st_pos.get("x", 0) - opp_goal_x) < 25.0 and abs(st_pos.get("y", 0)) < 15.0:
                 return [{
-                    "commandType": "SHOOT",
+                    "commandType": "PASS",
                     "playerId": my_player_id,
                     "teamId": team_id,
                     "parameters": {
-                        "aim_location": aim,
-                        "power": 0.9
+                        "target_player_id": _player_idx(st),
+                        "type": "AERIAL"
                     },
                     "duration": 0
                 }]
+
+    # Any attacking player (ST/FWD/LM/RM/MID) in shooting range (<26m, |y| < 16) with <= 2 blockers → instant far-post shoot
+    dist_to_opp_goal = dist(my_pos, {"x": opp_goal_x, "y": 0.0})
+    if position_label in ("FWD1", "FWD2", "FWD", "ST", "LM", "RM", "MID") and dist_to_opp_goal < 26.0 and abs(my_pos.get("y", 0)) < 16.0:
+        blockers = shot_blockers(my_pos, opp_goal_x, opponents)
+        if blockers <= 2:
+            opp_gk = next((p for p in opponents if _player_idx(p) == 0), None)
+            if opp_gk:
+                gk_y = opp_gk.get("position", {}).get("y", 0.0)
+                aim = "TR" if gk_y < 0 else "TL"
+            else:
+                my_y = my_pos.get("y", 0)
+                aim = "TR" if my_y < 0 else "TL"
+            return [{
+                "commandType": "SHOOT",
+                "playerId": my_player_id,
+                "teamId": team_id,
+                "parameters": {
+                    "aim_location": aim,
+                    "power": 0.9
+                },
+                "duration": 0
+            }]
 
     # Overload to Isolate: When opponents cluster on my flank, switch play aerially to opposite isolated winger
     if abs(my_pos.get("y", 0)) > 12.0:
