@@ -150,7 +150,7 @@ FWD2_CONFIG = FallbackConfig(
 GK_DIAMOND_CONFIG = FallbackConfig(
     possession_action="GK_DISTRIBUTE",
     distribute_wide_ids=[2, 3],      # LM/RM — never central
-    default_x_factor=0.9, default_x_ref="my_goal", default_y="track_ball",
+    default_x_factor=0.96, default_x_ref="my_goal", default_y="track_ball",
     default_stance=2,
     last_resort_command_type="SET_STANCE", last_resort_params={"stance": 2},
 )
@@ -158,11 +158,11 @@ GK_DIAMOND_CONFIG = FallbackConfig(
 CB_CONFIG = FallbackConfig(
     possession_action="PASS",
     pass_exclude_ids=[0],
-    default_x_factor=0.55, default_x_ref="my_goal", default_y=0,
-    support_x_factor=-0.55, support_y=0, support_sprint=False,
+    default_x_factor=0.70, default_x_ref="my_goal", default_y=0,
+    support_x_factor=-0.70, support_y=0, support_sprint=False,
     mark_threshold=30.0, mark_tightness="TIGHT",
     clear_when_pressured=True, phase_logic=True,
-    press_distance=12.0, press_intensity=0.6,
+    press_distance=8.0, press_intensity=0.5,
     default_stance=2,
     last_resort_command_type="SET_STANCE", last_resort_params={"stance": 2},
 )
