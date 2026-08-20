@@ -215,7 +215,25 @@ def test_scenario_ten_player_id_compatibility():
     sanitized = sanitize_commands(mark_cmd, game_state, 0, 1, RoleRules(label="CB", own_half_only=True))
     assert len(sanitized) == 1
     assert sanitized[0]["parameters"]["target_player_id"] == 7
-    print("✓ Scenario 9: 10-player ID compatibility (0-9) verified")
+def test_scenario_marked_player_passes_immediately():
+    """Scenario 10: Player receiving ball under pressure (<8.5m or defender in front) passes immediately."""
+    game_state = {
+        "ball": {"position": {"x": 10, "y": 0}, "possessionAgentId": "agentId_4"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 10, "y": -15}, "stamina": 90},
+            {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 10, "y": 15}, "stamina": 90},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 10, "y": 0}, "stamina": 90},
+            # Opponent closing in 6m away
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 16, "y": 0}, "stamina": 90},
+        ],
+    }
+    
+    cmd = fast_path_decision(game_state, 0, 4, "ST", None)
+    assert cmd is not None, "Player marked or with defender in front must trigger fast-path pass"
+    assert cmd[0]["commandType"] == "PASS"
+    assert cmd[0]["parameters"]["target_player_id"] in (2, 3), "Must pass to open wing teammate"
+    print("✓ Scenario 10: Marked/pressured player passes immediately verified")
 
 
 if __name__ == "__main__":
@@ -228,4 +246,5 @@ if __name__ == "__main__":
     test_scenario_box_emergency_clearance()
     test_scenario_far_post_shooting_angles()
     test_scenario_ten_player_id_compatibility()
-    print("\nAll 9 match scenario regression tests PASSED!")
+    test_scenario_marked_player_passes_immediately()
+    print("\nAll 10 match scenario regression tests PASSED!")

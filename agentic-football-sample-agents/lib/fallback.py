@@ -451,6 +451,29 @@ def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, op
         if abs(pos.get("x", 0) - opp_goal_x) < cfg.shoot_threshold:
             return [_cmd("SHOOT", my_player_id, team_id,
                          {"aim_location": shoot_aim, "power": cfg.shoot_power})]
+        
+        # Check if marked or defender in front
+        d_opp = min([dist(pos, p.get("position", {})) for p in opponents], default=99.0)
+        def _in_front(opp_pos):
+            dx = (opp_pos.get("x", 0) - pos.get("x", 0)) * (1 if team_id == 0 else -1)
+            dy = abs(opp_pos.get("y", 0) - pos.get("y", 0))
+            return (0.0 < dx < 12.0) and (dy < 7.0)
+        defender_in_front = any(_in_front(p.get("position", {})) for p in opponents)
+
+        if d_opp < 8.5 or defender_in_front:
+            # Pass to open teammate instead of running into defenders
+            teammates = [p for p in players if _is_my_team(p, team_id) and _player_idx(p) not in (0, my_player_id)]
+            if teammates:
+                unblocked = [
+                    p for p in teammates
+                    if not is_lane_blocked(pos, p.get("position", {}), opponents, clearance=2.5)
+                ]
+                pool = unblocked if unblocked else teammates
+                target = max(pool, key=lambda p: min([dist(p.get("position", {}), o.get("position", {})) for o in opponents], default=99.0))
+                pass_t = "GROUND" if unblocked else "AERIAL"
+                return [_cmd("PASS", my_player_id, team_id,
+                             {"target_player_id": _player_idx(target), "type": pass_t})]
+
         return [_cmd("MOVE_TO", my_player_id, team_id,
                      {"target_x": opp_goal_x * cfg.advance_x_factor,
                       "target_y": cfg.advance_y, "sprint": cfg.advance_sprint})]

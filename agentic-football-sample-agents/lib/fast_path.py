@@ -80,11 +80,11 @@ def fast_path_decision(
             opponents, ball_pos, my_pos, my_goal_x, opp_goal_x
         )
     
-    # Fast path 2: Ball is free and very close (< 5 units)
+    # Fast path 2: Free Ball — ONLY the nearest outfield teammate chases. Others get into receiving pockets!
     if possession_id is None:
         dist_to_ball = dist(my_pos, ball_pos)
-        if dist_to_ball < 5.0:
-            # Instant intercept for free ball nearby
+        i_am_nearest = is_nearest_to_ball(my_pos, my_player_id, my_team, ball_pos)
+        if i_am_nearest and dist_to_ball < 8.0:
             return [{
                 "commandType": "INTERCEPT",
                 "playerId": my_player_id,
@@ -92,6 +92,17 @@ def fast_path_decision(
                 "parameters": {"aggressive": True},
                 "duration": 2
             }]
+        elif not i_am_nearest and my_player_id != 0:
+            # Teammate is chasing and will get there first — get in position to receive the pass!
+            if position_label in ("CB", "DEF"):
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.65, "target_y": 0.0, "sprint": False}, "duration": 0}]
+            elif position_label == "LM":
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.40, "target_y": -16.0, "sprint": False}, "duration": 0}]
+            elif position_label == "RM":
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.40, "target_y": 16.0, "sprint": False}, "duration": 0}]
+            elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
+                target_y = 0.0 if position_label in ("ST", "FWD") else (-8.0 if position_label == "FWD1" else 8.0)
+                return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": opp_goal_x * 0.65, "target_y": target_y, "sprint": can_sprint}, "duration": 0}]
 
     # Fast path 3: Teammate has ball → instant shape/support positioning (<5ms)
     _, _, we_have_ball = get_possession_info(ball, players, team_id)
@@ -147,23 +158,7 @@ def fast_path_decision(
                 "duration": 0
             }]
 
-    # Fast path 4: Opponent has ball close (< 7 units or back to goal < 12 units) and I can press
-    if possession_id is not None and not we_have_ball and role_rules and getattr(role_rules, "may_press", False):
-        ball_carrier = next((p for p in players if _player_idx(p) == possession_id), None)
-        if ball_carrier and not _is_my_team(ball_carrier, team_id):
-            carrier_pos = ball_carrier.get("position", ball_pos)
-            dist_to_carrier = dist(my_pos, carrier_pos)
-            if dist_to_carrier < 7.0:
-                # Instant press on nearby opponent
-                return [{
-                    "commandType": "PRESS_BALL",
-                    "playerId": my_player_id,
-                    "teamId": team_id,
-                    "parameters": {"intensity": press_intensity},
-                    "duration": 3
-                }]
-
-    # Fast path 5: Defensive marking for CB/DEF when opponent is in our defensive territory
+    # Fast path 4: Defensive marking for CB/DEF when opponent is in our defensive territory
     if not we_have_ball and role_rules and getattr(role_rules, "own_half_only", False):
         if opponents:
             dangerous = min(opponents, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
@@ -180,6 +175,50 @@ def fast_path_decision(
                     },
                     "duration": 3
                 }]
+
+    # Fast path 5: Opponent has ball — ONLY nearest outfield teammate presses; others mark/cut corridors
+    if possession_id is not None and not we_have_ball and role_rules and getattr(role_rules, "may_press", False):
+        ball_carrier = next((p for p in players if _player_idx(p) == possession_id), None)
+        if ball_carrier and not _is_my_team(ball_carrier, team_id):
+            carrier_pos = ball_carrier.get("position", ball_pos)
+            dist_to_carrier = dist(my_pos, carrier_pos)
+            i_am_nearest_presser = is_nearest_to_ball(my_pos, my_player_id, my_team, carrier_pos)
+            if i_am_nearest_presser and dist_to_carrier < 10.0:
+                # Single designated presser
+                return [{
+                    "commandType": "PRESS_BALL",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {"intensity": press_intensity},
+                    "duration": 3
+                }]
+
+    # Fast path 6: Midfield passing lane corridor interception
+    if possession_id is not None and not we_have_ball and position_label in ("LM", "RM", "MID"):
+        opp_carrier = next((p for p in opponents if _player_idx(p) == possession_id), None)
+        if opp_carrier:
+            c_pos = opp_carrier.get("position", ball_pos)
+            fwd_opps = [
+                p for p in opponents
+                if _player_idx(p) != 0 and abs(p.get("position", {}).get("x", 0) - my_goal_x) < abs(c_pos.get("x", 0) - my_goal_x) - 2.0
+            ]
+            if fwd_opps:
+                target_receiver = min(fwd_opps, key=lambda p: abs(p.get("position", {}).get("x", 0) - my_goal_x))
+                r_pos = target_receiver.get("position", {})
+                corridor_x = (c_pos.get("x", 0) + r_pos.get("x", 0)) * 0.5
+                corridor_y = (c_pos.get("y", 0) + r_pos.get("y", 0)) * 0.5
+                if dist(my_pos, {"x": corridor_x, "y": corridor_y}) < 15.0:
+                    return [{
+                        "commandType": "MOVE_TO",
+                        "playerId": my_player_id,
+                        "teamId": team_id,
+                        "parameters": {
+                            "target_x": corridor_x,
+                            "target_y": corridor_y,
+                            "sprint": False
+                        },
+                        "duration": 0
+                    }]
 
     # No fast path applies - use LLM for complex decision
     return None
@@ -286,8 +325,37 @@ def _fast_path_with_ball(
                     "duration": 0
                 }]
 
-    # Under immediate pressure (opponent < 5 units) → instant pass to best teammate
-    if nearest_opp_dist < 5.0:
+    # Midfield counter-attack quick-release: When MID/LM/RM has ball, look for through-ball to forward ST
+    if position_label in ("LM", "RM", "MID") and not is_attacking_third(my_pos.get("x", 0), team_id):
+        st = next((p for p in my_team if _player_idx(p) in (3, 4) and _player_idx(p) != my_player_id), None)
+        if st:
+            st_pos = st.get("position", {})
+            st_dist_goal = abs(st_pos.get("x", 0) - opp_goal_x)
+            my_dist_goal = abs(my_pos.get("x", 0) - opp_goal_x)
+            if st_dist_goal < my_dist_goal - 5.0:
+                st_dist = dist(my_pos, st_pos)
+                pass_type = "THROUGH" if st_dist > 15.0 else "GROUND"
+                return [{
+                    "commandType": "PASS",
+                    "playerId": my_player_id,
+                    "teamId": team_id,
+                    "parameters": {
+                        "target_player_id": _player_idx(st),
+                        "type": pass_type
+                    },
+                    "duration": 0
+                }]
+
+    # Under pressure or marked (opponent < 8.5m or defender directly in front < 12m) → instant pass to open teammate
+    def is_in_forward_cone(opp_pos):
+        dx = (opp_pos.get("x", 0) - my_pos.get("x", 0)) * (1 if team_id == 0 else -1)
+        dy = abs(opp_pos.get("y", 0) - my_pos.get("y", 0))
+        return (0.0 < dx < 12.0) and (dy < 7.0)
+
+    defender_in_front = any(is_in_forward_cone(p.get("position", {})) for p in opponents)
+    is_pressured_or_marked = (nearest_opp_dist < 8.5) or defender_in_front
+
+    if is_pressured_or_marked:
         outfield = [p for p in my_team if _player_idx(p) != my_player_id and _player_idx(p) != 0]
         if outfield:
             def safety_score(teammate):
@@ -301,7 +369,7 @@ def _fast_path_with_ball(
             
             best_target = max(outfield, key=safety_score)
             target_dist = dist(best_target.get("position", {}), my_pos)
-            pass_type = "THROUGH" if target_dist > 20 else "GROUND"
+            pass_type = "AERIAL" if nearest_opp_dist < 5.0 else ("THROUGH" if target_dist > 20 else "GROUND")
             
             return [{
                 "commandType": "PASS",

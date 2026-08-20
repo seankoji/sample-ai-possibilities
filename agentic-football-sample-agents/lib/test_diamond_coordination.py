@@ -127,11 +127,35 @@ def test_coordination_phase_attacking_shot():
     cb_cmd = next(c for c in cmds if c["playerId"] == 1)
     assert cb_cmd["commandType"] == "MOVE_TO"
     assert cb_cmd["parameters"]["target_x"] <= 0.0, "CB must hold defensive anchor in own half"
-    print("✓ Phase 3: Attacking finish & defensive balance verified")
+def test_coordination_phase_free_ball_single_chaser():
+    """Phase 4: Free ball in midfield -> EXACTLY 1 player intercepts, others spread into open receiving pockets."""
+    game_state = {
+        "ball": {"position": {"x": 5, "y": 2}, "isFree": True, "possessionAgentId": None},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -30, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 6, "y": 3}, "stamina": 85},  # Closest to ball (dist=1.4)
+            {"agentId": "agentId_3", "teamCode": "home", "position": {"x": 8, "y": 10}, "stamina": 85}, # Dist=8.5
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 15, "y": 0}, "stamina": 90},  # Dist=10.2
+        ],
+    }
+    
+    cmds = run_5v5_tick(game_state, team_id=0)
+    
+    # Exactly 1 player (LM / Player 2) must intercept
+    intercepts = [c for c in cmds if c["commandType"] == "INTERCEPT"]
+    assert len(intercepts) == 1, f"Expected exactly 1 player to chase ball, got {len(intercepts)}"
+    assert intercepts[0]["playerId"] == 2, f"Expected Player 2 to intercept, got Player {intercepts[0]['playerId']}"
+    
+    # Other outfield players (1, 3, 4) must MOVE_TO open receiving pockets to receive the pass
+    support_moves = [c for c in cmds if c["commandType"] == "MOVE_TO" and c["playerId"] in (1, 3, 4)]
+    assert len(support_moves) == 3, "Other 3 outfield teammates must get into position to receive pass"
+    print("✓ Phase 4: Free ball single-chaser & receiving pocket allocation verified")
 
 
 if __name__ == "__main__":
     test_coordination_phase_possession_build_up()
     test_coordination_phase_defending_box()
     test_coordination_phase_attacking_shot()
-    print("\nAll 3 Diamond multi-agent coordination suites PASSED!")
+    test_coordination_phase_free_ball_single_chaser()
+    print("\nAll 4 Diamond multi-agent coordination suites PASSED!")

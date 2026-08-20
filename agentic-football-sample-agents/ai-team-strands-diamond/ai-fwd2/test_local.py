@@ -55,17 +55,25 @@ def test_fallback_shoot():
 
 
 def test_fallback_advance():
-    """ST has ball far from goal — should advance with MOVE_TO (hold-up play: sprint=False)."""
+    """ST has ball far from goal — if pressured passes, if open advances with MOVE_TO."""
     print(f"=== FALLBACK ADVANCE ({POSITION_LABEL}) ===")
     state = json.loads(json.dumps(GAME_STATE))
     state["ball"]["possessionAgentId"] = f"agentId_{MY_PLAYER_ID}"
     state["players"][4]["position"] = {"x": 10, "y": 0}  # far from goal
-    cmds = fallback_commands(state, TEAM_ID, MY_PLAYER_ID)
-    for c in cmds:
-        print(f"  P{c['playerId']}: {c['commandType']} {c.get('parameters', {})}")
-    assert cmds[0]["commandType"] == "MOVE_TO", f"FAIL: expected MOVE_TO, got {cmds[0]['commandType']}"
-    assert cmds[0]["parameters"]["sprint"] is False, "FAIL: ST should not sprint when advancing (hold up)"
-    print(f"  Correctly advances with hold-up (sprint=False)")
+    
+    # 1. Pressured by nearby opponent P1 at (10, -3) -> should PASS
+    cmds_pressured = fallback_commands(state, TEAM_ID, MY_PLAYER_ID)
+    assert cmds_pressured[0]["commandType"] == "PASS", f"FAIL: expected PASS under pressure, got {cmds_pressured[0]['commandType']}"
+    print(f"  Correctly passes when marked/pressured")
+
+    # 2. Open lane (move opponents far away) -> should advance with hold-up (sprint=False)
+    for p in state["players"]:
+        if p["teamCode"] == "away":
+            p["position"] = {"x": 45, "y": 25}
+    cmds_open = fallback_commands(state, TEAM_ID, MY_PLAYER_ID)
+    assert cmds_open[0]["commandType"] == "MOVE_TO", f"FAIL: expected MOVE_TO when open, got {cmds_open[0]['commandType']}"
+    assert cmds_open[0]["parameters"]["sprint"] is False, "FAIL: ST should not sprint when advancing (hold up)"
+    print(f"  Correctly advances with hold-up (sprint=False) when open")
     print()
 
 

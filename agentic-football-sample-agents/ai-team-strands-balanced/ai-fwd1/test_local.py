@@ -23,8 +23,10 @@ def test_summarize():
 
 
 def test_fallback():
-    """FWD1 has the ball at x=14 — far from goal, should MOVE_TO toward goal."""
+    """FWD1 has the ball at x=14 — if pressured passes, if open advances toward goal."""
     print(f"=== FALLBACK ({POSITION_LABEL}, has ball) ===")
+    
+    # 1. Under pressure by P1 at distance 4.5m -> should PASS
     cmds = fallback_commands(GAME_STATE, TEAM_ID, MY_PLAYER_ID)
     for c in cmds:
         pid = c.get("playerId")
@@ -33,8 +35,17 @@ def test_fallback():
         print(f"  [{ok}] P{pid} T{tid}: {c['commandType']} {c.get('parameters', {})}")
     assert all(c["playerId"] == MY_PLAYER_ID for c in cmds), "FAIL: wrong playerId"
     assert all(c["teamId"] == TEAM_ID for c in cmds), "FAIL: wrong teamId"
-    assert cmds[0]["commandType"] == "MOVE_TO", f"FAIL: expected MOVE_TO, got {cmds[0]['commandType']}"
-    print(f"  Correctly advances toward goal")
+    assert cmds[0]["commandType"] == "PASS", f"FAIL: expected PASS under pressure, got {cmds[0]['commandType']}"
+    print(f"  Correctly passes when marked/pressured")
+
+    # 2. Open lane (move opponents far away) -> should advance
+    state = json.loads(json.dumps(GAME_STATE))
+    for p in state["players"]:
+        if p["teamCode"] == "away":
+            p["position"] = {"x": 45, "y": 25}
+    cmds_open = fallback_commands(state, TEAM_ID, MY_PLAYER_ID)
+    assert cmds_open[0]["commandType"] == "MOVE_TO", f"FAIL: expected MOVE_TO when open, got {cmds_open[0]['commandType']}"
+    print(f"  Correctly advances toward goal when open")
     print()
 
 
