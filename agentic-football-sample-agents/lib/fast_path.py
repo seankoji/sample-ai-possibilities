@@ -87,10 +87,10 @@ def fast_path_decision(
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": my_goal_x * 0.50, "target_y": 0.0, "sprint": False}, "duration": 0}]
         elif position_label == "LM":
             target_x = my_goal_x * (0.35 if is_protecting_lead else 0.25)
-            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": -15.0, "sprint": False}, "duration": 0}]
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": -8.0, "sprint": False}, "duration": 0}]
         elif position_label == "RM":
             target_x = my_goal_x * (0.35 if is_protecting_lead else 0.25)
-            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": 15.0, "sprint": False}, "duration": 0}]
+            return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": target_x, "target_y": 8.0, "sprint": False}, "duration": 0}]
         elif position_label in ("ST", "FWD", "FWD1", "FWD2"):
             return [{"commandType": "MOVE_TO", "playerId": my_player_id, "teamId": team_id, "parameters": {"target_x": 0.0, "target_y": 0.0, "sprint": False}, "duration": 0}]
 
@@ -359,7 +359,7 @@ def fast_path_decision(
     # Fast path 7: Off-ball defensive covering when opponent has ball (prevents fallback PRESS spam)
     if possession_id is not None and not we_have_ball:
         if position_label in ("LM", "RM"):
-            flank_y = -12.0 if position_label == "LM" else 12.0
+            flank_y = -8.0 if position_label == "LM" else 8.0
             def_x = ball_pos.get("x", 0) * 0.35 if ((ball_pos.get("x", 0) < 0) if team_id == 0 else (ball_pos.get("x", 0) > 0)) else 0.0
             return [{
                 "commandType": "MOVE_TO",

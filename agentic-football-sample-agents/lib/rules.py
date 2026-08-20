@@ -395,8 +395,8 @@ def sanitize_commands(
                     params["target_x"] = max(min_x, min(36.0, tx))
                 params["target_y"] = max(-8.0, min(8.0, ty))
             else:
-                params["target_x"] = max(-38.0, min(38.0, tx))
-                params["target_y"] = max(-12.0, min(12.0, ty))
+                params["target_x"] = max(-35.0, min(35.0, tx))
+                params["target_y"] = max(-8.0, min(8.0, ty))
 
         # Rule 5b: Anti-Goal Line MARK guard — don't follow opponents into our own net
         if cmd_type == "MARK" and getattr(rules, "own_half_only", False):

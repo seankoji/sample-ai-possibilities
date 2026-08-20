@@ -234,7 +234,7 @@ def test_stamina_and_flank():
     sanitized_flank = sanitize_commands(cmds_press, GAME_STATE_OPPOSITE_FLANK, TEAM_ID, 2, lm_rules)
     assert len(sanitized_flank) == 1
     assert sanitized_flank[0]["commandType"] == "MOVE_TO"
-    assert sanitized_flank[0]["parameters"]["target_y"] in (-15.0, -12.0)
+    assert sanitized_flank[0]["parameters"]["target_y"] in (-15.0, -12.0, -8.0)
     assert sanitized_flank[0]["parameters"]["sprint"] is False
     print("  Opposite flank substituted PRESS_BALL with jog MOVE_TO home flank")
 
