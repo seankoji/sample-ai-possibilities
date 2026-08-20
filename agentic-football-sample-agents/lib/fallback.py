@@ -169,10 +169,10 @@ CB_CONFIG = FallbackConfig(
 
 LM_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_PASS",
-    default_x_factor=0.4, default_x_ref="ball_x", default_y=-13,
+    default_x_factor=0.60, default_x_ref="opp_goal", default_y=-12.0,
     press_distance=12.0, press_intensity=0.55,
-    shoot_threshold=14.0, shoot_aim="TL", shoot_power=0.85,
-    support_x_factor=0.50, support_y=-13, support_sprint=False,
+    shoot_threshold=14.0, shoot_aim="TL", shoot_power=0.90,
+    support_x_factor=0.60, support_y=-12.0, support_sprint=False,
     phase_logic=True, default_stance=0,
     last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.5},
     last_resort_duration=3,
@@ -180,10 +180,10 @@ LM_CONFIG = FallbackConfig(
 
 RM_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_PASS",
-    default_x_factor=0.4, default_x_ref="ball_x", default_y=13,
+    default_x_factor=0.60, default_x_ref="opp_goal", default_y=12.0,
     press_distance=12.0, press_intensity=0.55,
-    shoot_threshold=14.0, shoot_aim="TR", shoot_power=0.85,
-    support_x_factor=0.50, support_y=13, support_sprint=False,
+    shoot_threshold=14.0, shoot_aim="TR", shoot_power=0.90,
+    support_x_factor=0.60, support_y=12.0, support_sprint=False,
     phase_logic=True, default_stance=0,
     last_resort_command_type="PRESS_BALL", last_resort_params={"intensity": 0.5},
     last_resort_duration=3,
@@ -191,10 +191,10 @@ RM_CONFIG = FallbackConfig(
 
 ST_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_ADVANCE",
-    shoot_threshold=16.0, shoot_aim="TR", shoot_power=0.9,
-    advance_x_factor=0.60, advance_y=0, advance_sprint=False,   # middle of box: no sprint
-    support_x_factor=0.58, support_y=0, support_sprint=False,
-    default_x_factor=0.35, default_x_ref="opp_goal", default_y=0,
+    shoot_threshold=18.0, shoot_aim="TR", shoot_power=0.95,
+    advance_x_factor=0.62, advance_y=0.0, advance_sprint=False,   # middle of box: no sprint
+    support_x_factor=0.62, support_y=0.0, support_sprint=False,
+    default_x_factor=0.62, default_x_ref="opp_goal", default_y=0.0,
     press_distance=14.0, press_intensity=0.6,
     phase_logic=True, default_stance=0,
     last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": 0, "sprint": False},
@@ -448,9 +448,10 @@ def _on_ball(cfg, game_state, players, team_id, my_player_id, pos, my_goal_x, op
                      {"target_player_id": 3, "type": "GROUND"})]
 
     if cfg.possession_action == "SHOOT_OR_ADVANCE":
-        if abs(pos.get("x", 0) - opp_goal_x) < cfg.shoot_threshold:
+        is_in_box = (abs(pos.get("x", 0) - opp_goal_x) <= 22.0) and (abs(pos.get("y", 0)) <= 16.0)
+        if is_in_box or abs(pos.get("x", 0) - opp_goal_x) < cfg.shoot_threshold:
             return [_cmd("SHOOT", my_player_id, team_id,
-                         {"aim_location": shoot_aim, "power": cfg.shoot_power})]
+                         {"aim_location": shoot_aim, "power": 0.95})]
         
         # Check if marked or defender in front
         d_opp = min([dist(pos, p.get("position", {})) for p in opponents], default=99.0)

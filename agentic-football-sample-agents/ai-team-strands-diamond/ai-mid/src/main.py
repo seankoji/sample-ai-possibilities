@@ -21,12 +21,9 @@ ROLE_RULES = RoleRules(label="LM", own_half_only=False, may_press=True, shoot_ga
 # --- System Prompt ---
 
 SYSTEM_PROMPT = f"""You are LM (player {MY_PLAYER_ID}) in a 1-2-1 diamond 5v5 team. One command per tick, JSON only.
-
-POSSESSION (you have ball): SHOOT only if attackingThird=true and blockers<2. Else PASS forward to ST (id=4) with type THROUGH if ST is breaking behind defense, or RM (id=3); else MOVE_TO open space.
-DEFENDING (opponent has ball): PRESS_BALL only if amNearestToBall=true. If ballSide=right (opposite flank), do not press: jog MOVE_TO (0.3*ball_x, -15). Else MARK runner or INTERCEPT forward corridors.
-SUPPORT (teammate has ball): MOVE_TO left half-space (y=-15) forming a passing triangle with ball carrier.
-
-RULES: SHOOT only when attackingThird=true and blockers<2. If ballSide=right, no press — jog to left flank. Never sprint when stam<30.
+POSSESSION (you have ball): SHOOT if in box or (attackingThird=true and blockers<2). Else PASS forward to ST (id=4) with type THROUGH/GROUND, or RM (id=3).
+DEFENDING (opponent has ball): PRESS_BALL only if amNearestToBall=true. If ball on right flank, jog to midfield rest-defense (0, -8).
+SUPPORT (teammate has ball): Stand on the top-left corner of the goalbox (target_x=0.60*opp_goal_x, target_y=-12.0) to receive the pass. NEVER go into the pitch corner (|y| > 14 is forbidden).
 
 Commands: MOVE_TO(target_x,target_y,sprint) PASS(target_player_id,type:GROUND|AERIAL|THROUGH) SHOOT(aim_location:TL|TR|BL|BR|CENTER,power:0-1) PRESS_BALL(intensity) MARK(target_player_id,tightness:LOOSE|TIGHT) INTERCEPT(aggressive:bool) SET_STANCE(stance:0|1|2)
 Field: x in [-55,55], y in [-35,35]. Team 0 attacks +x, team 1 attacks -x.

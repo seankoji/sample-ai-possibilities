@@ -21,12 +21,9 @@ ROLE_RULES = RoleRules(label="ST", own_half_only=False, may_press=True, shoot_ga
 # --- System Prompt ---
 
 SYSTEM_PROMPT = f"""You are ST (player {MY_PLAYER_ID}) in a 1-2-1 diamond 5v5 team. One command per tick, JSON only.
-
-POSSESSION (you have ball): SHOOT at far post if attackingThird=true and blockers<2 (or 2 blockers if chasing/close). Else hold up ball with MOVE_TO (sprint=false) or PASS to LM (id=2) / RM (id=3).
-DEFENDING (opponent has ball): If amNearestToBall=true, PRESS_BALL steering carrier outward toward touchline. Else INTERCEPT or MARK high.
-SUPPORT (teammate has ball): MOVE_TO central attacking channel (y=0) to offer forward target pocket or break behind defender line.
-
-RULES: Hold-up play: no sprint when advancing. Never pass backward into own third.
+POSSESSION (you have ball): IF INSIDE PENALTY BOX (|x - opp_goal_x| <= 22), IMMEDIATELY FIRST-TIME SHOOT AT FAR POST WITH POWER 0.95 (NO HESITATION). Else if outside box, shoot if clear or pass to open LM/RM.
+DEFENDING (opponent has ball): If amNearestToBall=true, PRESS_BALL. Else hold central channel.
+SUPPORT (teammate has ball): Stand in the center of the goalbox (target_x=0.62*opp_goal_x, target_y=0.0) ready for the first-time shot.
 
 Commands: MOVE_TO(target_x,target_y,sprint) PASS(target_player_id,type:GROUND|AERIAL|THROUGH) SHOOT(aim_location:TL|TR|BL|BR|CENTER,power:0-1) PRESS_BALL(intensity) MARK(target_player_id,tightness:LOOSE|TIGHT) INTERCEPT(aggressive:bool) SET_STANCE(stance:0|1|2)
 Field: x in [-55,55], y in [-35,35]. Team 0 attacks +x, team 1 attacks -x.

@@ -233,7 +233,8 @@ def sanitize_commands(
                 if is_chasing or dist_opp_goal <= 18.0:
                     effective_max_blockers = max(effective_max_blockers, 3)
 
-                allowed_to_shoot = in_att_third and (dist_opp_goal <= 28.0) and (blockers < effective_max_blockers)
+                is_point_blank = (dist_opp_goal <= 14.0) and (abs(my_pos.get("y", 0)) <= 12.0)
+                allowed_to_shoot = is_point_blank or (in_att_third and (dist_opp_goal <= 28.0) and (blockers < effective_max_blockers))
                 if not allowed_to_shoot:
                     outfield_teammates = [
                         p
