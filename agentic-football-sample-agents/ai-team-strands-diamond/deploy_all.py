@@ -187,11 +187,29 @@ if existing != targets:
     print(f"  Wrote deploy target to {targets_file.relative_to(SCRIPT_DIR)}\n")
 
 
-# ── Pre-deploy validation (test_local.py for all agents) ───────────────────
+# ── Pre-deploy validation (lib tests + test_local.py for agents) ───────────
 if not skip_tests:
     print("==========================================")
     print("  Pre-Deploy Validation")
     print("==========================================")
+    lib_test_files = sorted(LIB_SRC.glob("test_*.py"))
+    lib_test_files = [f for f in lib_test_files if f.name != "test_helpers.py"]
+    for test_file in lib_test_files:
+        print(f"  Testing shared library ({test_file.name})...")
+        res = subprocess.run(
+            [sys.executable, str(test_file)],
+            cwd=SCRIPT_DIR,
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0:
+            print(f"\nERROR: Pre-deploy validation failed for {test_file.name}!")
+            print(res.stdout)
+            if res.stderr:
+                print(res.stderr)
+            sys.exit(1)
+        print(f"  {test_file.name}: PASS")
+
     for agent in agents:
         agent_dir = SCRIPT_DIR / agent
         test_script = agent_dir / "test_local.py"
