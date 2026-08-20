@@ -169,32 +169,32 @@ CB_CONFIG = FallbackConfig(
 
 LM_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_PASS",
-    default_x_factor=0.60, default_x_ref="opp_goal", default_y=-12.0,
+    default_x_factor=0.45, default_x_ref="opp_goal", default_y=-8.0,
     press_distance=6.5, press_intensity=0.55,
     shoot_threshold=14.0, shoot_aim="TL", shoot_power=0.90,
-    support_x_factor=0.60, support_y=-12.0, support_sprint=False,
+    support_x_factor=0.45, support_y=-8.0, support_sprint=False,
     phase_logic=True, default_stance=0,
-    last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": -12.0, "sprint": False},
+    last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": -8.0, "sprint": False},
     last_resort_duration=0,
 )
 
 RM_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_PASS",
-    default_x_factor=0.60, default_x_ref="opp_goal", default_y=12.0,
+    default_x_factor=0.45, default_x_ref="opp_goal", default_y=8.0,
     press_distance=6.5, press_intensity=0.55,
     shoot_threshold=14.0, shoot_aim="TR", shoot_power=0.90,
-    support_x_factor=0.60, support_y=12.0, support_sprint=False,
+    support_x_factor=0.45, support_y=8.0, support_sprint=False,
     phase_logic=True, default_stance=0,
-    last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": 12.0, "sprint": False},
+    last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": 8.0, "sprint": False},
     last_resort_duration=0,
 )
 
 ST_CONFIG = FallbackConfig(
     possession_action="SHOOT_OR_ADVANCE",
     shoot_threshold=18.0, shoot_aim="TR", shoot_power=0.95,
-    advance_x_factor=0.62, advance_y=0.0, advance_sprint=False,   # middle of box: no sprint
-    support_x_factor=0.62, support_y=0.0, support_sprint=False,
-    default_x_factor=0.62, default_x_ref="opp_goal", default_y=0.0,
+    advance_x_factor=0.48, advance_y=0.0, advance_sprint=False,   # middle of box: no sprint
+    support_x_factor=0.48, support_y=0.0, support_sprint=False,
+    default_x_factor=0.48, default_x_ref="opp_goal", default_y=0.0,
     press_distance=6.5, press_intensity=0.6,
     phase_logic=True, default_stance=0,
     last_resort_command_type="MOVE_TO", last_resort_params={"target_x": 0, "target_y": 0, "sprint": False},

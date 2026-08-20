@@ -376,6 +376,23 @@ def sanitize_commands(
                     "sprint": False,
                 }
                 duration = 0
+        # Rule 5: Wall Anti-Collision & Compact Pitch Boundaries (10% shorter and narrower)
+        # Prevents attackers running into the perimeter walls or standing too wide/deep!
+        if cmd_type == "MOVE_TO":
+            tx = float(params.get("target_x", 0.0))
+            ty = float(params.get("target_y", 0.0))
+            if my_player_id != 0:
+                params["target_x"] = max(-40.0, min(40.0, tx))
+                params["target_y"] = max(-12.0, min(12.0, ty))
+            else:
+                params["target_x"] = max(-52.0, min(52.0, tx))
+                params["target_y"] = max(-20.0, min(20.0, ty))
+
+        # Rule 4: Stamina preservation — no sprint below stamina 30
+        if cmd_type == "MOVE_TO" and params.get("sprint", False):
+            min_sprint = getattr(rules, "min_sprint_stamina", 30) if rules else 30
+            if stam < min_sprint:
+                params["sprint"] = False
 
         sanitized.append(
             {
