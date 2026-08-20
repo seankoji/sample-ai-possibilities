@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def create_agent(
     system_prompt: str,
     model_id: str = "us.amazon.nova-micro-v1:0",
-    max_tokens: int = 150,
+    max_tokens: int = 60,
     temperature: float = 0.0,
 ) -> Agent:
     """Create a Strands Agent with the given system prompt and inference parameters."""

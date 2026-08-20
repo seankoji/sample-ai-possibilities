@@ -56,18 +56,18 @@ def _possession_idx(ball: dict) -> int | None:
     if isinstance(agent_id, str) and agent_id and agent_id.lower() not in ("none", "null", "-1"):
         try:
             idx = int(agent_id.rsplit("_", 1)[-1])
-            return idx if 0 <= idx <= 4 else None
+            return idx if 0 <= idx <= 9 else None
         except (ValueError, IndexError):
             import re
             digits = re.findall(r"\d+", agent_id)
             if digits:
                 idx = int(digits[-1])
-                return idx if 0 <= idx <= 4 else None
+                return idx if 0 <= idx <= 9 else None
     pid = ball.get("possessionPlayerId")
     if pid is not None:
         try:
             idx = int(pid)
-            return idx if 0 <= idx <= 4 else None
+            return idx if 0 <= idx <= 9 else None
         except (ValueError, TypeError):
             return None
     return None

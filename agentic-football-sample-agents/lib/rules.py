@@ -75,7 +75,7 @@ def _validate_schema(cmd: dict, my_player_id: int) -> bool:
         if (
             not isinstance(target, int)
             or isinstance(target, bool)
-            or not (0 <= target <= 4)
+            or not (0 <= target <= 9)
             or target == my_player_id
         ):
             return False

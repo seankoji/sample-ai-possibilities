@@ -131,6 +131,120 @@ def test_no_fast_path_for_complex_situation():
     print("✓ Complex situation defers to LLM")
 
 
+def test_teammate_with_ball_shape_support():
+    """Teammate with ball should trigger instant shape/support positioning."""
+    game_state = {
+        "ball": {"position": {"x": 20, "y": 10}, "possessionAgentId": "agentId_2"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -30, "y": 0}, "stamina": 90},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 20, "y": 10}, "stamina": 80},
+        ],
+    }
+    
+    result = fast_path_decision(game_state, 0, 1, "CB", RoleRules(label="CB", own_half_only=True))
+    assert result is not None, "Teammate in possession should trigger fast-path shape anchor"
+    assert len(result) == 1
+    assert result[0]["commandType"] == "MOVE_TO"
+    assert result[0]["parameters"]["target_x"] == -55.0 * 0.65
+    assert result[0]["parameters"]["sprint"] is False
+    print("✓ Teammate in possession shape support")
+
+
+def test_defensive_marking_near_goal():
+    """CB should instantly mark dangerous opponent near goal."""
+    game_state = {
+        "ball": {"position": {"x": -25, "y": 10}, "possessionAgentId": "agentId_6"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -35, "y": 5}, "stamina": 90},
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -40, "y": 2}, "stamina": 90},
+            {"agentId": "agentId_6", "teamCode": "away", "position": {"x": -25, "y": 10}, "stamina": 90},
+        ],
+    }
+    
+    rules = RoleRules(label="CB", own_half_only=True)
+    result = fast_path_decision(game_state, 0, 1, "CB", rules)
+    assert result is not None, "Dangerous opponent in box should trigger instant mark"
+    assert len(result) == 1
+    assert result[0]["commandType"] == "MARK"
+    assert result[0]["parameters"]["target_player_id"] == 5  # agentId_5 is closest to goal (-40)
+    print("✓ Defensive marking near goal")
+
+
+def test_defender_clearance_under_pressure():
+    """CB under pressure in own third should instantly clear."""
+    game_state = {
+        "ball": {"position": {"x": -45, "y": 5}, "possessionAgentId": "agentId_1"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_1", "teamCode": "home", "position": {"x": -45, "y": 5}, "stamina": 90},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": -10, "y": -15}, "stamina": 80},
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": -43, "y": 6}, "stamina": 90},
+        ],
+    }
+    
+    result = fast_path_decision(game_state, 0, 1, "CB", None)
+    assert result is not None, "CB under pressure in own third should trigger instant clearance"
+    assert len(result) == 1
+    assert result[0]["commandType"] == "PASS"
+    assert result[0]["parameters"]["type"] == "AERIAL"
+    print("✓ Defender aerial clearance under pressure")
+
+
+def test_kickoff_formation_positioning():
+    """Kickoff should trigger instant formation positioning."""
+    game_state = {
+        "playMode": "KICK_OFF",
+        "ball": {"position": {"x": 0, "y": 0}, "possessionAgentId": None},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -40, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": -10, "y": 5}, "stamina": 100},
+        ],
+    }
+    result = fast_path_decision(game_state, 0, 4, "ST", None)
+    assert result is not None, "Kickoff should trigger fast path"
+    assert result[0]["commandType"] == "MOVE_TO"
+    assert result[0]["parameters"]["target_x"] == 0.0
+    print("✓ Kickoff formation positioning")
+
+
+def test_winger_cross_into_box():
+    """Winger in attacking third on flank should cross to central striker."""
+    game_state = {
+        "ball": {"position": {"x": 35, "y": -20}, "possessionAgentId": "agentId_2"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 35, "y": -20}, "stamina": 90},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 45, "y": 2}, "stamina": 85},
+            {"agentId": "agentId_5", "teamCode": "away", "position": {"x": 20, "y": 0}, "stamina": 90},
+        ],
+    }
+    result = fast_path_decision(game_state, 0, 2, "LM", None)
+    assert result is not None, "Winger crossing should trigger fast path"
+    assert result[0]["commandType"] == "PASS"
+    assert result[0]["parameters"]["type"] == "AERIAL"
+    assert result[0]["parameters"]["target_player_id"] == 4
+    print("✓ Winger aerial cross into box")
+
+
+def test_stamina_limits_sprint():
+    """Low stamina player should not sprint."""
+    game_state = {
+        "ball": {"position": {"x": 20, "y": 10}, "possessionAgentId": "agentId_2"},
+        "players": [
+            {"agentId": "agentId_0", "teamCode": "home", "position": {"x": -50, "y": 0}, "stamina": 100},
+            {"agentId": "agentId_2", "teamCode": "home", "position": {"x": 20, "y": 10}, "stamina": 80},
+            {"agentId": "agentId_4", "teamCode": "home", "position": {"x": 0, "y": 0}, "stamina": 20},  # Low stamina
+        ],
+    }
+    result = fast_path_decision(game_state, 0, 4, "ST", None)
+    assert result is not None
+    assert result[0]["commandType"] == "MOVE_TO"
+    assert result[0]["parameters"]["sprint"] is False, "Low stamina (<30) must not sprint"
+    print("✓ Low stamina disables sprinting")
+
+
 if __name__ == "__main__":
     import sys
     import os
@@ -141,6 +255,12 @@ if __name__ == "__main__":
     test_free_ball_nearby()
     test_opponent_nearby_with_ball()
     test_under_pressure_with_ball()
+    test_teammate_with_ball_shape_support()
+    test_defensive_marking_near_goal()
+    test_defender_clearance_under_pressure()
+    test_kickoff_formation_positioning()
+    test_winger_cross_into_box()
+    test_stamina_limits_sprint()
     test_no_fast_path_for_complex_situation()
     
     print("\nAll fast-path tests passed!")

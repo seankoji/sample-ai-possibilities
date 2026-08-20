@@ -24,13 +24,25 @@ import sys
 import shutil
 import signal
 import subprocess
+import argparse
 from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 LIB_SRC = SCRIPT_DIR.parent / "lib"
 ALL_AGENTS = ["ai-gk", "ai-def", "ai-mid", "ai-fwd1", "ai-fwd2"]
-agents = ALL_AGENTS
+
+parser = argparse.ArgumentParser(description="Deploy AI Team agents to Bedrock AgentCore.")
+parser.add_argument("agents", nargs="*", default=ALL_AGENTS, help="Specific agents to deploy (default: all 5)")
+parser.add_argument("--fast", "-f", action="store_true", default=bool(os.environ.get("FAST_DEPLOY")), help="Fast deploy: skip tool checks, CDK bootstrap, and local tests")
+parser.add_argument("--skip-bootstrap", action="store_true", default=bool(os.environ.get("SKIP_BOOTSTRAP")), help="Skip CDK bootstrap step")
+parser.add_argument("--skip-tests", action="store_true", default=bool(os.environ.get("SKIP_TESTS")), help="Skip pre-deploy local tests")
+args = parser.parse_args()
+
+agents = args.agents
+fast_mode = args.fast
+skip_bootstrap = args.skip_bootstrap or fast_mode
+skip_tests = args.skip_tests or fast_mode
 
 _injected: list[Path] = []
 
@@ -71,6 +83,14 @@ if hasattr(signal, "SIGBREAK"):  # Windows Ctrl+Break
 def resolve_exe(name):
     # npm-installed CLIs are .cmd shims on Windows; subprocess won't find them
     # without an explicit path. shutil.which honors PATHEXT.
+    if name == "agentcore":
+        paths = os.environ.get("PATH", "").split(os.pathsep)
+        for p in paths:
+            if ".venv" in p:
+                continue
+            cand = shutil.which(name, path=p)
+            if cand:
+                return cand
     path = shutil.which(name)
     if path is None:
         print(f"ERROR: '{name}' not found on PATH.")
@@ -133,13 +153,14 @@ def aws_cli(*args):
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 
 print("==========================================")
-print("  AI Team — Deploy Agents")
+print("  AI Team — Deploy Agents" + (" (FAST MODE)" if fast_mode else ""))
 print("==========================================\n")
-print("Checking prerequisites...")
 
-for tool in ["agentcore", "aws", "node", "cdk", "uv"]:
-    check_tool(tool)
-check_agentcore_version("0.25.0")
+if not fast_mode:
+    print("Checking prerequisites...")
+    for tool in ["agentcore", "aws", "node", "cdk", "uv"]:
+        check_tool(tool)
+    check_agentcore_version("0.25.0")
 
 account_id = aws_cli("sts", "get-caller-identity", "--query", "Account", "--output", "text")
 if not account_id:
@@ -167,28 +188,31 @@ if existing != targets:
 
 
 # ── Pre-deploy validation (test_local.py for all agents) ───────────────────
-print("==========================================")
-print("  Pre-Deploy Validation")
-print("==========================================")
-for agent in agents:
-    agent_dir = SCRIPT_DIR / agent
-    test_script = agent_dir / "test_local.py"
-    if test_script.exists():
-        print(f"  Testing {agent} ({test_script.name})...")
-        res = subprocess.run(
-            [sys.executable, str(test_script)],
-            cwd=SCRIPT_DIR,
-            capture_output=True,
-            text=True,
-        )
-        if res.returncode != 0:
-            print(f"\nERROR: Pre-deploy validation failed for {agent}!")
-            print(res.stdout)
-            if res.stderr:
-                print(res.stderr)
-            sys.exit(1)
-        print(f"  {agent}: PASS")
-print("All pre-deploy validation tests passed.\n")
+if not skip_tests:
+    print("==========================================")
+    print("  Pre-Deploy Validation")
+    print("==========================================")
+    for agent in agents:
+        agent_dir = SCRIPT_DIR / agent
+        test_script = agent_dir / "test_local.py"
+        if test_script.exists():
+            print(f"  Testing {agent} ({test_script.name})...")
+            res = subprocess.run(
+                [sys.executable, str(test_script)],
+                cwd=SCRIPT_DIR,
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                print(f"\nERROR: Pre-deploy validation failed for {agent}!")
+                print(res.stdout)
+                if res.stderr:
+                    print(res.stderr)
+                sys.exit(1)
+            print(f"  {agent}: PASS")
+    print("All pre-deploy validation tests passed.\n")
+else:
+    print("Skipping pre-deploy validation tests (--skip-tests or --fast active).\n")
 
 try:
     # ── Install CDK node_modules if needed ───────────────────────────────────
@@ -203,11 +227,14 @@ try:
 
     # ── CDK bootstrap (idempotent) ────────────────────────────────────────────
 
-    print("==========================================")
-    print("  CDK Bootstrap")
-    print("==========================================")
-    run(["cdk", "bootstrap", f"aws://{account_id}/{region}"])
-    print()
+    if not skip_bootstrap:
+        print("==========================================")
+        print("  CDK Bootstrap")
+        print("==========================================")
+        run(["cdk", "bootstrap", f"aws://{account_id}/{region}"])
+        print()
+    else:
+        print("Skipping CDK bootstrap (--skip-bootstrap or --fast active).\n")
 
     # ── Inject lib/ into each agent dir ──────────────────────────────────────
 
