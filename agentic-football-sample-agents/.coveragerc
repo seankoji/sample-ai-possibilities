@@ -1,0 +1,15 @@
+[run]
+branch = True
+parallel = True
+patch = subprocess
+source =
+    lib
+    ai-team-strands-diamond
+omit =
+    */test_*.py
+
+[report]
+show_missing = True
+
+[xml]
+output = coverage/coverage.xml
